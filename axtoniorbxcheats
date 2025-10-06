@@ -286,7 +286,7 @@ local function CreateFallbackUI()
     title.Font = Enum.Font.GothamBold
     title.TextSize = 20
     title.TextColor3 = Color3.fromRGB(255,255,255)
-    title.Text = "366axtonio Script | v3.2"
+    title.Text = "366axtonio Script | v1.0"
     title.TextStrokeTransparency = 0.8
 
     local scroll = Instance.new("ScrollingFrame", main)
