@@ -1,14 +1,13 @@
 --[[ 
-    Universal Roblox Script | 366axtonio v1.0
-    - Nutzt Orion GUI Library, sonst Fallback
-    - Voll funktionsfähig: Player, ESP, AutoFarm, Misc
-    - Bewegbares Fenster & Notification bei Ladefertig
+    Universal Roblox Script | 366axtonio v2.0
+    - Unterstützt Orion GUI (wenn verfügbar) sonst eigener Fallback (inkl. echter Drag-Slider)
+    - Features: WalkSpeed, JumpPower, Fly, InfiniteJump, Noclip, SpeedBoost, ESP (Nametag/Box), Teleport zu Spielern, Rejoin, ServerHop, Destroy GUI
+    - Verbesserte Bedienbarkeit: echte Schieberegler (wenn Fallback verwendet wird)
 --]]
 
--- URL der offiziellen Orion-Quelle
+-- ========== Hilfsfunktionen / Loader ==========
 local ORION_URL = "https://raw.githubusercontent.com/shlexware/Orion/main/source"
 
--- HTTP GET Helfer
 local function detect_http_get()
     if pcall(function() return game.HttpGet end) and type(game.HttpGet) == "function" then
         return function(url) return game:HttpGet(url, true) end
@@ -38,31 +37,32 @@ end
 local http_get = detect_http_get()
 local loader = loadstring or (syn and syn.loadstring) or (KRNL and KRNL.loadstring) or (Fluxus and Fluxus.loadstring)
 
+-- Versuche Orion zu laden
 local OrionLib = nil
 if loader and http_get then
-    local ok, source = pcall(function() return http_get(ORION_URL) end)
-    if ok and type(source)=="string" and #source>50 then
-        local ok2, chunk = pcall(function() return loader(source) end)
-        if ok2 and type(chunk)=="function" then
-            local ok3, lib = pcall(chunk)
-            if ok3 and type(lib)=="table" then
-                OrionLib = lib
-            elseif ok3 and type(lib)=="function" then
-                local ok4, maybeLib = pcall(lib)
-                if ok4 and type(maybeLib)=="table" then OrionLib = maybeLib end
+    pcall(function()
+        local src = http_get(ORION_URL)
+        if type(src)=="string" and #src>50 then
+            local chunk = loader(src)
+            if type(chunk)=="function" then
+                local ok, lib = pcall(chunk)
+                if ok and type(lib)=="table" then OrionLib = lib end
             end
         end
-    end
+    end)
 end
 
--- Fallback GUI falls Orion nicht geladen
+-- ========== Fallback GUI (wenn Orion nicht verfügbar) ==========
 if not OrionLib then
-    warn("[Fallback] Orion konnte nicht geladen werden — benutze lokale GUI")
-    local fallbackScreen = nil
+    warn("[Fallback] Orion nicht geladen — benutze lokalen Fallback mit Drag-Slidern")
     local Fallback = {}
+    local fallbackScreen = nil
+
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
 
     function Fallback:MakeWindow(opts)
-        local parent = (game:GetService("Players").LocalPlayer and game:GetService("Players").LocalPlayer:FindFirstChild("PlayerGui")) or game:GetService("CoreGui")
+        local parent = (Players.LocalPlayer and Players.LocalPlayer:FindFirstChild("PlayerGui")) or game:GetService("CoreGui")
         fallbackScreen = Instance.new("ScreenGui")
         fallbackScreen.Name = opts.Name or "FallbackUI"
         fallbackScreen.ResetOnSpawn = false
@@ -70,34 +70,36 @@ if not OrionLib then
 
         local main = Instance.new("Frame")
         main.Name = "Main"
-        main.Size = UDim2.new(0, 340, 0, 420)
-        main.Position = UDim2.new(0.5, -170, 0.12, 0)
-        main.BackgroundColor3 = Color3.fromRGB(30,30,30)
+        main.Size = UDim2.new(0, 420, 0, 480)
+        main.Position = UDim2.new(0.5, -210, 0.12, 0)
+        main.BackgroundColor3 = Color3.fromRGB(28,28,28)
         main.BorderSizePixel = 0
         main.Parent = fallbackScreen
         main.Active = true
         main.Draggable = true
+        main.ClipsDescendants = true
 
         local title = Instance.new("TextLabel")
         title.Parent = main
-        title.Size = UDim2.new(1,0,0,30)
+        title.Size = UDim2.new(1,0,0,34)
         title.Position = UDim2.new(0,0,0,0)
         title.BackgroundTransparency = 1
         title.Text = opts.Name or "Fallback UI"
-        title.TextColor3 = Color3.fromRGB(255,255,255)
+        title.TextColor3 = Color3.fromRGB(240,240,240)
         title.Font = Enum.Font.SourceSansSemibold
         title.TextSize = 18
 
+        -- Tabs links
         local tabsList = Instance.new("Frame")
         tabsList.Parent = main
-        tabsList.Size = UDim2.new(0,100,1,-30)
-        tabsList.Position = UDim2.new(0,0,0,30)
+        tabsList.Size = UDim2.new(0,120,1,-34)
+        tabsList.Position = UDim2.new(0,0,0,34)
         tabsList.BackgroundTransparency = 1
 
         local contentArea = Instance.new("Frame")
         contentArea.Parent = main
-        contentArea.Size = UDim2.new(1,-100,1,-30)
-        contentArea.Position = UDim2.new(0,100,0,30)
+        contentArea.Size = UDim2.new(1,-120,1,-34)
+        contentArea.Position = UDim2.new(0,120,0,34)
         contentArea.BackgroundTransparency = 1
 
         local tabs = {}
@@ -112,8 +114,8 @@ if not OrionLib then
             local tabName = tabOpts.Name or "Tab"
             local btn = Instance.new("TextButton")
             btn.Parent = tabsList
-            btn.Size = UDim2.new(1,-10,0,30)
-            btn.Position = UDim2.new(0,5,0,5+(#tabs*35))
+            btn.Size = UDim2.new(1,-10,0,34)
+            btn.Position = UDim2.new(0,5,0,5+(#tabs*39))
             btn.Text = tabName
             btn.BackgroundTransparency = 0.2
             btn.TextColor3 = Color3.fromRGB(230,230,230)
@@ -133,77 +135,197 @@ if not OrionLib then
                 frame.Visible = true
             end)
 
+            local elementsCount = 0
+            local function nextY(h)
+                elementsCount = elementsCount + 1
+                return UDim2.new(0,0,0, (elementsCount-1)*(h+6))
+            end
+
             local tab = {}
+            function tab:AddLabel(text)
+                local lbl = Instance.new("TextLabel", frame)
+                lbl.Size = UDim2.new(1, -10, 0, 20)
+                lbl.Position = nextY(20)
+                lbl.BackgroundTransparency = 1
+                lbl.Text = text or ""
+                lbl.TextColor3 = Color3.fromRGB(230,230,230)
+                lbl.Font = Enum.Font.SourceSans
+                lbl.TextSize = 14
+            end
+
+            -- Echte Drag-Slider (min,max,default,increment,callback)
             function tab:AddSlider(params)
+                params = params or {}
+                local width = frame.AbsoluteSize.X - 20
                 local container = Instance.new("Frame", frame)
-                container.Size = UDim2.new(1,-10,0,40)
-                container.Position = UDim2.new(0,5,0,(#frame:GetChildren()-1)*45)
-                container.BackgroundTransparency=1
+                container.Size = UDim2.new(1, -10, 0, 48)
+                container.Position = nextY(48)
+                container.BackgroundTransparency = 1
+
                 local label = Instance.new("TextLabel", container)
-                label.Size=UDim2.new(0.6,0,1,0)
-                label.Position=UDim2.new(0,0,0,0)
-                label.BackgroundTransparency=1
-                local value=params.Default or params.Min or 0
-                label.Text=(params.Name or "Slider")..": "..tostring(value)
-                label.TextColor3=Color3.fromRGB(230,230,230)
-                label.Font=Enum.Font.SourceSans
-                label.TextSize=14
+                label.Size = UDim2.new(1, -10, 0, 20)
+                label.Position = UDim2.new(0, 0, 0, 0)
+                label.BackgroundTransparency = 1
+                label.TextColor3 = Color3.fromRGB(230,230,230)
+                label.Font = Enum.Font.SourceSans
+                label.TextSize = 14
 
-                local minus = Instance.new("TextButton", container)
-                minus.Size=UDim2.new(0.2,-5,1,-6)
-                minus.Position=UDim2.new(0.6,5,0,3)
-                minus.Text="-"
-                minus.Font=Enum.Font.SourceSansBold
-                minus.TextSize=18
-                local plus = Instance.new("TextButton", container)
-                plus.Size=UDim2.new(0.2,-5,1,-6)
-                plus.Position=UDim2.new(0.8,0,0,3)
-                plus.Text="+"
-                plus.Font=Enum.Font.SourceSansBold
-                plus.TextSize=18
+                local track = Instance.new("Frame", container)
+                track.Size = UDim2.new(1, -20, 0, 10)
+                track.Position = UDim2.new(0, 10, 0, 26)
+                track.BackgroundColor3 = Color3.fromRGB(50,50,50)
+                track.BorderSizePixel = 0
+                track.ClipsDescendants = true
 
-                local min=params.Min or 0
-                local max=params.Max or 100
-                local inc=params.Increment or 1
-                local function apply(v)
-                    value=v
-                    label.Text=(params.Name or "Slider")..": "..tostring(value)
-                    if typeof(params.Callback)=="function" then pcall(params.Callback,value) end
+                local fill = Instance.new("Frame", track)
+                fill.Size = UDim2.new(0,0,1,0)
+                fill.Position = UDim2.new(0,0,0,0)
+                fill.BackgroundColor3 = Color3.fromRGB(100,100,100)
+                fill.BorderSizePixel = 0
+
+                local knob = Instance.new("TextButton", track)
+                knob.Size = UDim2.new(0,14,1,0)
+                knob.Position = UDim2.new(0, -7, 0, 0)
+                knob.AutoButtonColor = false
+                knob.Text = ""
+                knob.BackgroundColor3 = Color3.fromRGB(200,200,200)
+                knob.BorderSizePixel = 0
+
+                local min = params.Min or 0
+                local max = params.Max or 100
+                local inc = params.Increment or 1
+                local default = params.Default or min
+                local value = math.clamp(default, min, max)
+
+                local function setValueFromPercent(p)
+                    p = math.clamp(p,0,1)
+                    local exact = min + (max-min)*p
+                    -- Runden auf Increment
+                    local stepped = math.floor((exact - min)/inc + 0.5) * inc + min
+                    value = math.clamp(stepped, min, max)
+                    local rel = (value - min)/(max-min >= 0.0001 and (max-min) or 1)
+                    fill.Size = UDim2.new(rel, 0, 1, 0)
+                    knob.Position = UDim2.new(rel, -7, 0, 0)
+                    label.Text = (params.Name or "Slider") .. ": " .. tostring(value)
+                    if typeof(params.Callback) == "function" then pcall(params.Callback, value) end
                 end
-                minus.MouseButton1Click:Connect(function() apply(math.max(min,value-inc)) end)
-                plus.MouseButton1Click:Connect(function() apply(math.min(max,value+inc)) end)
-                if typeof(params.Callback)=="function" then pcall(params.Callback,value) end
+
+                -- Set initial
+                setValueFromPercent((value-min)/(max-min >= 0.0001 and (max-min) or 1))
+
+                -- Drag handling
+                local dragging = false
+                local UIS = game:GetService("UserInputService")
+                knob.MouseButton1Down:Connect(function()
+                    dragging = true
+                end)
+                UIS.InputEnded:Connect(function(inp)
+                    if inp.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+                end)
+                UIS.InputChanged:Connect(function(inp)
+                    if dragging and inp.UserInputType == Enum.UserInputType.MouseMovement then
+                        local absPos = track.AbsolutePosition
+                        local relX = (UIS:GetMouseLocation().X - absPos.X)
+                        local perc = relX/track.AbsoluteSize.X
+                        setValueFromPercent(perc)
+                    end
+                end)
+
+                -- Click on track to jump
+                track.InputBegan:Connect(function(inp)
+                    if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+                        local absPos = track.AbsolutePosition
+                        local relX = (game:GetService("UserInputService"):GetMouseLocation().X - absPos.X)
+                        local perc = relX/track.AbsoluteSize.X
+                        setValueFromPercent(perc)
+                    end
+                end)
+
+                return {
+                    Get = function() return value end,
+                    Set = function(v) value = math.clamp(v, min, max); setValueFromPercent((value-min)/(max-min >= 0.0001 and (max-min) or 1)) end
+                }
             end
 
             function tab:AddToggle(params)
+                params = params or {}
                 local btn = Instance.new("TextButton", frame)
-                btn.Size=UDim2.new(1,-10,0,30)
-                btn.Position=UDim2.new(0,5,0,(#frame:GetChildren()-1)*35)
-                local state=params.Default or false
-                btn.Text=(params.Name or "Toggle").." : "..(state and "On" or "Off")
-                btn.Font=Enum.Font.SourceSans
-                btn.TextColor3=Color3.fromRGB(230,230,230)
-                btn.AutoButtonColor=true
+                btn.Size = UDim2.new(1, -10, 0, 30)
+                btn.Position = nextY(30)
+                btn.Text = (params.Name or "Toggle") .. " : " .. ((params.Default and "On") or "Off")
+                btn.Font = Enum.Font.SourceSans
+                btn.TextColor3 = Color3.fromRGB(230,230,230)
+                btn.AutoButtonColor = true
+                local state = params.Default or false
                 btn.MouseButton1Click:Connect(function()
-                    state=not state
-                    btn.Text=(params.Name or "Toggle").." : "..(state and "On" or "Off")
-                    if typeof(params.Callback)=="function" then pcall(params.Callback,state) end
+                    state = not state
+                    btn.Text = (params.Name or "Toggle") .. " : " .. (state and "On" or "Off")
+                    if typeof(params.Callback) == "function" then pcall(params.Callback, state) end
                 end)
-                if typeof(params.Callback)=="function" then pcall(params.Callback,state) end
+                if typeof(params.Callback) == "function" then pcall(params.Callback, state) end
+                return btn
             end
 
             function tab:AddButton(params)
-                local btn=Instance.new("TextButton", frame)
-                btn.Size=UDim2.new(1,-10,0,30)
-                btn.Position=UDim2.new(0,5,0,(#frame:GetChildren()-1)*35)
-                btn.Text=params.Name or "Button"
-                btn.Font=Enum.Font.SourceSans
-                btn.TextColor3=Color3.fromRGB(230,230,230)
-                btn.AutoButtonColor=true
-                btn.MouseButton1Click:Connect(function() if typeof(params.Callback)=="function" then pcall(params.Callback) end end)
+                params = params or {}
+                local btn = Instance.new("TextButton", frame)
+                btn.Size = UDim2.new(1, -10, 0, 30)
+                btn.Position = nextY(30)
+                btn.Text = params.Name or "Button"
+                btn.Font = Enum.Font.SourceSans
+                btn.TextColor3 = Color3.fromRGB(230,230,230)
+                btn.AutoButtonColor = true
+                btn.MouseButton1Click:Connect(function() if typeof(params.Callback) == "function" then pcall(params.Callback) end end)
+                return btn
             end
 
-            table.insert(tabs,{btn=btn,frame=frame})
+            function tab:AddDropdown(params)
+                params = params or {}
+                local container = Instance.new("Frame", frame)
+                container.Size = UDim2.new(1, -10, 0, 120)
+                container.Position = nextY(120)
+                container.BackgroundTransparency = 1
+
+                local label = Instance.new("TextLabel", container)
+                label.Size = UDim2.new(1, 0, 0, 20)
+                label.Position = UDim2.new(0, 0, 0, 0)
+                label.BackgroundTransparency = 1
+                label.Text = params.Name or "Dropdown"
+                label.TextColor3 = Color3.fromRGB(230,230,230)
+                label.Font = Enum.Font.SourceSans
+                label.TextSize = 14
+
+                local listFrame = Instance.new("ScrollingFrame", container)
+                listFrame.Size = UDim2.new(1, -10, 1, -30)
+                listFrame.Position = UDim2.new(0, 5, 0, 26)
+                listFrame.BackgroundTransparency = 1
+                listFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+                listFrame.ScrollBarThickness = 6
+
+                local uiList = Instance.new("UIListLayout", listFrame)
+
+                function tab:ClearDropdown()
+                    for _,c in pairs(listFrame:GetChildren()) do
+                        if not c:IsA("UIListLayout") then pcall(function() c:Destroy() end) end
+                    end
+                end
+
+                function tab:AddDropdownItem(name, callback)
+                    local b = Instance.new("TextButton", listFrame)
+                    b.Size = UDim2.new(1, 0, 0, 28)
+                    b.Text = name
+                    b.Font = Enum.Font.SourceSans
+                    b.TextSize = 14
+                    b.TextColor3 = Color3.fromRGB(230,230,230)
+                    b.AutoButtonColor = true
+                    b.MouseButton1Click:Connect(function() if typeof(callback)=="function" then pcall(callback) end end)
+                    listFrame.CanvasSize = UDim2.new(0, 0, 0, uiList.AbsoluteContentSize.Y)
+                end
+
+                return tab
+            end
+
+            table.insert(tabs, {btn=btn, frame=frame})
             return tab
         end
 
@@ -211,134 +333,398 @@ if not OrionLib then
         return Window
     end
 
-    function Fallback:Init() end
-
     function Fallback:MakeNotification(params)
         if not fallbackScreen then return end
-        local note=Instance.new("TextLabel", fallbackScreen)
-        note.Size=UDim2.new(0,250,0,50)
-        note.Position=UDim2.new(0.5,-125,0.05,0)
-        note.BackgroundTransparency=0.2
-        note.BackgroundColor3=Color3.fromRGB(20,20,20)
-        note.TextColor3=Color3.fromRGB(255,255,255)
-        note.Font=Enum.Font.SourceSans
-        note.TextSize=16
-        note.Text=(params.Name and (params.Name.."\n") or "")..(params.Content or "")
-        local t=params.Time or 3
+        local note = Instance.new("TextLabel", fallbackScreen)
+        note.Size = UDim2.new(0, 300, 0, 50)
+        note.Position = UDim2.new(0.5, -150, 0.05, 0)
+        note.BackgroundTransparency = 0.15
+        note.BackgroundColor3 = Color3.fromRGB(20,20,20)
+        note.TextColor3 = Color3.fromRGB(255,255,255)
+        note.Font = Enum.Font.SourceSans
+        note.TextSize = 16
+        note.Text = (params.Name and (params.Name.."\n") or "")..(params.Content or "")
+        local t = params.Time or 3
         spawn(function() wait(t) pcall(function() note:Destroy() end) end)
     end
 
     function Fallback:Destroy()
         if fallbackScreen and fallbackScreen.Parent then pcall(function() fallbackScreen:Destroy() end) end
-        fallbackScreen=nil
+        fallbackScreen = nil
     end
 
-    OrionLib=Fallback
+    OrionLib = Fallback
 end
 
--- === GUI erstellen ===
-local Window = OrionLib:MakeWindow({Name="366axtonio Script | v1.0", HidePremium=false, SaveConfig=true, ConfigFolder="UniversalScript"})
+-- ========== Gemeinsamer Teil: Fenster & Tabs erstellen ==========
+local Window = OrionLib:MakeWindow({Name="366axtonio Script | v2.0", HidePremium=false, SaveConfig=true, ConfigFolder="UniversalScript"})
 
--- ===== Player Tab =====
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TeleportService = game:GetService("TeleportService")
+
+-- ===== Zustand / Variablen =====
+local state = {
+    WalkSpeed = 16,
+    JumpPower = 50,
+    SpeedBoost = 1,
+    FlyEnabled = false,
+    FlySpeed = 60,
+    InfiniteJump = false,
+    Noclip = false,
+    ESPEnabled = false,
+    ESPNametags = true,
+    ESPBoxes = true
+}
+
+-- Hilf: charakter / humanoid
+local function getHumanoidAndRoot(plr)
+    if not plr then return nil end
+    local char = plr.Character
+    if not char then return nil end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+    return hum, root
+end
+
+-- ========== Player Tab ==========
 local PlayerTab = Window:MakeTab({Name="Player", Icon="rbxassetid://4483345998", PremiumOnly=false})
-PlayerTab:AddSlider({Name="WalkSpeed", Min=16, Max=500, Default=16, Increment=1, Callback=function(v)
-    local plr=game.Players.LocalPlayer
-    if plr and plr.Character then
-        local hum=plr.Character:FindFirstChildOfClass("Humanoid")
-        if hum then pcall(function() hum.WalkSpeed=v end) end
+
+PlayerTab:AddSlider({
+    Name="WalkSpeed",
+    Min=16,
+    Max=500,
+    Default=16,
+    Increment=1,
+    Callback=function(v)
+        state.WalkSpeed = v
+        local plr = LocalPlayer
+        if plr and plr.Character then
+            local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+            if hum then pcall(function() hum.WalkSpeed = v * (state.SpeedBoost or 1) end) end
+        end
     end
-end})
-PlayerTab:AddSlider({Name="JumpPower", Min=50, Max=500, Default=50, Increment=1, Callback=function(v)
-    local plr=game.Players.LocalPlayer
-    if plr and plr.Character then
-        local hum=plr.Character:FindFirstChildOfClass("Humanoid")
-        if hum then pcall(function() hum.JumpPower=v end) end
+})
+
+PlayerTab:AddSlider({
+    Name="JumpPower",
+    Min=50,
+    Max=500,
+    Default=50,
+    Increment=1,
+    Callback=function(v)
+        state.JumpPower = v
+        local plr = LocalPlayer
+        if plr and plr.Character then
+            local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+            if hum then pcall(function() hum.JumpPower = v end) end
+        end
     end
-end})
+})
+
+PlayerTab:AddSlider({
+    Name="Speed Boost Multiplier",
+    Min=1,
+    Max=5,
+    Default=1,
+    Increment=0.1,
+    Callback=function(v)
+        state.SpeedBoost = v
+        local plr = LocalPlayer
+        if plr and plr.Character then
+            local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+            if hum then pcall(function() hum.WalkSpeed = (state.WalkSpeed or 16) * v end) end
+        end
+    end
+})
+
+PlayerTab:AddToggle({
+    Name="Infinite Jump",
+    Default=false,
+    Callback=function(val) state.InfiniteJump = val end
+})
+
+-- Fly Mode: Toggle + Keybind (Toggle 'F')
+local function enableFly(bool)
+    state.FlyEnabled = bool
+    local char = LocalPlayer and LocalPlayer.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if bool then
+        if root then
+            root.Anchored = false
+            -- BodyVelocity + BodyGyro pattern
+            if not root:FindFirstChild("FlyBV") then
+                local bv = Instance.new("BodyVelocity")
+                bv.Name = "FlyBV"
+                bv.MaxForce = Vector3.new(1e5,1e5,1e5)
+                bv.Velocity = Vector3.new(0,0,0)
+                bv.P = 1250
+                bv.Parent = root
+            end
+            if not root:FindFirstChild("FlyBG") then
+                local bg = Instance.new("BodyGyro")
+                bg.Name = "FlyBG"
+                bg.MaxTorque = Vector3.new(1e5,1e5,1e5)
+                bg.CFrame = root.CFrame
+                bg.Parent = root
+            end
+        end
+    else
+        if root then
+            local bv = root:FindFirstChild("FlyBV")
+            local bg = root:FindFirstChild("FlyBG")
+            pcall(function() if bv then bv:Destroy() end end)
+            pcall(function() if bg then bg:Destroy() end end)
+        end
+    end
+end
+
+PlayerTab:AddToggle({
+    Name="Fly Mode (F to toggle)",
+    Default=false,
+    Callback=function(val) enableFly(val) end
+})
+
+-- Keybind für Fly + InfiniteJump (F toggled)
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.F then
+        enableFly(not state.FlyEnabled)
+        if OrionLib and type(OrionLib.MakeNotification)=="function" then
+            OrionLib:MakeNotification({Name="Fly", Content = (state.FlyEnabled and "Fly aktiviert" or "Fly deaktiviert"), Time=3})
+        end
+    end
+    if state.InfiniteJump and input.KeyCode == Enum.KeyCode.Space then
+        local hum = LocalPlayer and LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if hum then pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end) end
+    end
+end)
+
+-- In-Run Steuerung für Fly (update velocity)
+RunService.Heartbeat:Connect(function(dt)
+    if state.FlyEnabled and LocalPlayer and LocalPlayer.Character then
+        local root = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if root then
+            local bv = root:FindFirstChild("FlyBV")
+            local bg = root:FindFirstChild("FlyBG")
+            if bv and bg then
+                local cam = workspace.CurrentCamera
+                local look = Vector3.new(0,0,0)
+                local moveVec = Vector3.new(0,0,0)
+                local humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+                -- Bewegung basierend auf keyboard
+                local forward = (UserInputService:IsKeyDown(Enum.KeyCode.W) and 1 or 0) - (UserInputService:IsKeyDown(Enum.KeyCode.S) and 1 or 0)
+                local side = (UserInputService:IsKeyDown(Enum.KeyCode.D) and 1 or 0) - (UserInputService:IsKeyDown(Enum.KeyCode.A) and 1 or 0)
+                local up = (UserInputService:IsKeyDown(Enum.KeyCode.E) and 1 or 0) - (UserInputService:IsKeyDown(Enum.KeyCode.Q) and 1 or 0)
+                local camCFrame = cam and cam.CFrame or root.CFrame
+                local moveDir = (camCFrame.LookVector * forward) + (camCFrame.RightVector * side) + Vector3.new(0, up, 0)
+                if moveDir.Magnitude > 0 then moveVec = moveDir.Unit * (state.FlySpeed or 60) end
+                bv.Velocity = moveVec
+                bg.CFrame = root.CFrame
+            end
+        end
+    end
+    -- Noclip
+    if state.Noclip then
+        local char = LocalPlayer and LocalPlayer.Character
+        if char then
+            for _, part in pairs(char:GetDescendants()) do
+                if part:IsA("BasePart") and part.CanCollide == true and part.Name ~= "HumanoidRootPart" then
+                    pcall(function() part.CanCollide = false end)
+                end
+            end
+        end
+    end
+end)
 
 -- ===== ESP Tab =====
 local ESPTab = Window:MakeTab({Name="ESP", Icon="rbxassetid://4483345998", PremiumOnly=false})
-local ESPEnabled=false
-local ESPBoxes={}
-ESPTab:AddToggle({Name="Enable ESP", Default=false, Callback=function(Value)
-    ESPEnabled=Value
-    if ESPEnabled then
-        for _,plr in pairs(game.Players:GetPlayers()) do
-            if plr~=game.Players.LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
-                local bb=Instance.new("BillboardGui")
-                bb.Name="ESPBillboard"
-                bb.Size=UDim2.new(0,100,0,50)
-                bb.Adornee=plr.Character.HumanoidRootPart
-                bb.AlwaysOnTop=true
-                local label=Instance.new("TextLabel",bb)
-                label.Size=UDim2.new(1,0,1,0)
-                label.BackgroundTransparency=1
-                label.TextColor3=Color3.new(1,0,0)
-                label.TextScaled=true
-                label.Text=plr.Name
-                bb.Parent=game.CoreGui
-                ESPBoxes[plr]=bb
-            end
-        end
-        game.Players.PlayerAdded:Connect(function(plr)
-            plr.CharacterAdded:Connect(function(char)
-                if ESPEnabled and plr~=game.Players.LocalPlayer and char:FindFirstChild("HumanoidRootPart") then
-                    local bb=Instance.new("BillboardGui")
-                    bb.Name="ESPBillboard"
-                    bb.Size=UDim2.new(0,100,0,50)
-                    bb.Adornee=char.HumanoidRootPart
-                    bb.AlwaysOnTop=true
-                    local label=Instance.new("TextLabel",bb)
-                    label.Size=UDim2.new(1,0,1,0)
-                    label.BackgroundTransparency=1
-                    label.TextColor3=Color3.new(1,0,0)
-                    label.TextScaled=true
-                    label.Text=plr.Name
-                    bb.Parent=game.CoreGui
-                    ESPBoxes[plr]=bb
-                end
-            end)
-        end)
-    else
-        for _,b in pairs(ESPBoxes) do pcall(function() b:Destroy() end) end
-        ESPBoxes={}
-    end
-end})
+local ESPBoxes = {}
+local function createESPForPlayer(plr)
+    if not plr or plr == LocalPlayer then return end
+    if ESPBoxes[plr] then return end
+    local char = plr.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
 
--- ===== AutoFarm Tab =====
+    local bb = Instance.new("BillboardGui")
+    bb.Name = "ESPBillboard"
+    bb.Adornee = root
+    bb.Size = UDim2.new(0,120,0,40)
+    bb.AlwaysOnTop = true
+    bb.StudsOffset = Vector3.new(0,2.4,0)
+
+    local label = Instance.new("TextLabel", bb)
+    label.Size = UDim2.new(1,0,1,0)
+    label.BackgroundTransparency = 1
+    label.Text = plr.Name
+    label.TextScaled = true
+    label.TextColor3 = Color3.fromRGB(255,80,80)
+    label.Font = Enum.Font.SourceSansBold
+
+    bb.Parent = game.CoreGui
+    ESPBoxes[plr] = bb
+end
+
+local function destroyAllESP()
+    for p,b in pairs(ESPBoxes) do
+        pcall(function() b:Destroy() end)
+    end
+    ESPBoxes = {}
+end
+
+ESPTab:AddToggle({
+    Name="Enable ESP",
+    Default=false,
+    Callback=function(val)
+        state.ESPEnabled = val
+        if val then
+            for _,plr in pairs(Players:GetPlayers()) do createESPForPlayer(plr) end
+            Players.PlayerAdded:Connect(function(plr) plr.CharacterAdded:Connect(function() if state.ESPEnabled then createESPForPlayer(plr) end end) end)
+            Players.PlayerRemoving:Connect(function(plr) if ESPBoxes[plr] then pcall(function() ESPBoxes[plr]:Destroy() end) ESPBoxes[plr]=nil end end)
+        else
+            destroyAllESP()
+        end
+    end
+})
+
+-- ===== AutoFarm Tab (einfacher Clicker) =====
 local FarmTab = Window:MakeTab({Name="AutoFarm", Icon="rbxassetid://4483345998", PremiumOnly=false})
-local AutoFarmEnabled=false
-FarmTab:AddToggle({Name="Auto Farm", Default=false, Callback=function(Value)
-    AutoFarmEnabled=Value
-    spawn(function()
-        while AutoFarmEnabled do
-            wait(0.5)
-            local plr=game.Players.LocalPlayer
-            if plr and plr:FindFirstChild("PlayerGui") then
-                local btn=plr.PlayerGui:FindFirstChild("ClickButton")
-                if btn then
-                    if btn:IsA("RemoteEvent") then pcall(function() btn:FireServer() end)
-                    elseif btn:IsA("TextButton") then pcall(function() btn:Activate() end) end
+local AutoFarmEnabled = false
+FarmTab:AddToggle({
+    Name="Auto Farm (sucht RemoteEvent oder ClickButton im PlayerGui)",
+    Default=false,
+    Callback=function(val)
+        AutoFarmEnabled = val
+        spawn(function()
+            while AutoFarmEnabled do
+                wait(0.5)
+                local plr = LocalPlayer
+                if plr and plr:FindFirstChild("PlayerGui") then
+                    local btn = plr.PlayerGui:FindFirstChild("ClickButton") or plr.PlayerGui:FindFirstChildOfClass("RemoteEvent")
+                    if btn then
+                        pcall(function()
+                            if typeof(btn.FireServer)=="function" then btn:FireServer() end
+                            if typeof(btn.Activate)=="function" then btn:Activate() end
+                        end)
+                    end
                 end
             end
-        end
-    end)
-end})
+        end)
+    end
+})
 
 -- ===== Misc Tab =====
 local MiscTab = Window:MakeTab({Name="Misc", Icon="rbxassetid://4483345998", PremiumOnly=false})
-MiscTab:AddButton({Name="Rejoin Server", Callback=function()
-    local ts=game:GetService("TeleportService")
-    pcall(function() ts:Teleport(game.PlaceId, game.Players.LocalPlayer) end)
-end})
-MiscTab:AddButton({Name="Destroy GUI", Callback=function()
-    if OrionLib and type(OrionLib.Destroy)=="function" then pcall(function() OrionLib:Destroy() end) end
-end})
+
+MiscTab:AddToggle({
+    Name="Noclip",
+    Default=false,
+    Callback=function(v) state.Noclip = v end
+})
+
+MiscTab:AddToggle({
+    Name="Infinite Jump (Space)",
+    Default=false,
+    Callback=function(v) state.InfiniteJump = v end
+})
+
+MiscTab:AddSlider({
+    Name="Fly Speed",
+    Min=10,
+    Max=500,
+    Default=60,
+    Increment=1,
+    Callback=function(v) state.FlySpeed = v end
+})
+
+MiscTab:AddButton({
+    Name="Rejoin Server",
+    Callback=function()
+        pcall(function() TeleportService:Teleport(game.PlaceId, LocalPlayer) end)
+    end
+})
+
+MiscTab:AddButton({
+    Name="Server Hop (versucht neues Server)",
+    Callback=function()
+        -- Einfacher Versuch: Rejoin. (Für vollständiges Server-Hopping bräuchte man externe API/HTTP)
+        pcall(function() TeleportService:Teleport(game.PlaceId, LocalPlayer) end)
+    end
+})
+
+MiscTab:AddButton({
+    Name="Destroy GUI",
+    Callback=function()
+        if OrionLib and type(OrionLib.Destroy)=="function" then pcall(function() OrionLib:Destroy() end) end
+    end
+})
+
+-- ===== Teleport Tab =====
+local TeleTab = Window:MakeTab({Name="Teleport", Icon="rbxassetid://4483345998", PremiumOnly=false})
+local dropdown = TeleTab:AddDropdown({Name="Players"})
+local function refreshPlayerList()
+    if not dropdown then return end
+    dropdown:ClearDropdown()
+    for _,p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then
+            local display = p.Name
+            dropdown:AddDropdownItem(display, function()
+                local hum, root = getHumanoidAndRoot(p)
+                if root and LocalPlayer and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    pcall(function() LocalPlayer.Character.HumanoidRootPart.CFrame = root.CFrame + Vector3.new(0,3,0) end)
+                end
+            end)
+        end
+    end
+end
+Players.PlayerAdded:Connect(function() refreshPlayerList() end)
+Players.PlayerRemoving:Connect(function() refreshPlayerList() end)
+refreshPlayerList()
+
+-- ===== Extra: einfache Noclip kontinuierlich (bei Character spawn) =====
+LocalPlayer.CharacterAdded:Connect(function(char)
+    wait(0.2)
+    -- Set default walk/jump
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        pcall(function() hum.WalkSpeed = state.WalkSpeed * (state.SpeedBoost or 1) end)
+        pcall(function() hum.JumpPower = state.JumpPower end)
+    end
+end)
 
 -- ===== Init & Notification =====
 if OrionLib and type(OrionLib.Init)=="function" then pcall(function() OrionLib:Init() end) end
 if OrionLib and type(OrionLib.MakeNotification)=="function" then
     pcall(function()
-        OrionLib:MakeNotification({Name="Loaded", Content="Axtonio Script loaded successfully!", Time=5})
+        OrionLib:MakeNotification({Name="Loaded", Content="Axtonio Script v2.0 geladen!", Time=4})
     end)
+else
+    -- Fallback Notification
+    if OrionLib and type(OrionLib.MakeNotification)=="function" then
+        pcall(function() OrionLib:MakeNotification({Name="Loaded", Content="Axtonio Script v2.0 geladen!", Time=4}) end)
+    end
 end
+
+-- ===== Utility: Anwenden der Standardwerte jetzt =====
+spawn(function()
+    wait(0.6)
+    local char = LocalPlayer.Character
+    if char then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            pcall(function() hum.WalkSpeed = state.WalkSpeed end)
+            pcall(function() hum.JumpPower = state.JumpPower end)
+        end
+    end
+end)
+
+-- ===== Hinweise =====
+-- Dieses Script ist so aufgebaut, dass: wenn Orion verfügbar ist, die echten Orion-Komponenten verwendet werden.
+-- Wenn Orion nicht verfügbar ist, liefert der Fallback dennoch echte Drag-Slider sowie Dropdowns/Toggles/Buttons.
+-- Für erweitertes Server-Hopping oder externe Features wäre Zugriff auf externe APIs/HTTP nötig (nicht implementiert).
