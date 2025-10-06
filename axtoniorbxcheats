@@ -1,113 +1,86 @@
 --[[ 
-    Universal Roblox Script using Orion Library (robust loader + fallback)
-    - Versucht Orion von GitHub zu laden (wenn environment es erlaubt)
-    - Wenn nicht möglich: nutzt eine einfache, lokale Fallback-GUI mit derselben API
-    - Deine Features (Player/ESP/AutoFarm/Misc) bleiben unverändert
+    Universal Roblox Script | 366axtonio v1.0
+    - Nutzt Orion GUI Library, sonst Fallback
+    - Voll funktionsfähig: Player, ESP, AutoFarm, Misc
+    - Bewegbares Fenster & Notification bei Ladefertig
 --]]
 
 -- URL der offiziellen Orion-Quelle
 local ORION_URL = "https://raw.githubusercontent.com/shlexware/Orion/main/source"
 
--- Helfer: HTTP-Get-Erkennung (verschiedene Executor/Umgebungen)
+-- HTTP GET Helfer
 local function detect_http_get()
-    -- game:HttpGet (häufig bei Exploitern)
     if pcall(function() return game.HttpGet end) and type(game.HttpGet) == "function" then
         return function(url) return game:HttpGet(url, true) end
     end
-
-    -- syn.request (Synapse/andere)
     if type(syn) == "table" and type(syn.request) == "function" then
         return function(url)
-            local ok, r = pcall(function() return syn.request({Url = url, Method = "GET"}) end)
+            local ok, r = pcall(function() return syn.request({Url=url, Method="GET"}) end)
             if ok and r and r.Body then return r.Body end
-            return nil
         end
     end
-
-    -- http.request (manche Exploiter)
     if type(http) == "table" and type(http.request) == "function" then
         return function(url)
-            local ok, r = pcall(function() return http.request({Url = url, Method = "GET"}) end)
+            local ok, r = pcall(function() return http.request({Url=url, Method="GET"}) end)
             if ok and r and r.Body then return r.Body end
-            return nil
         end
     end
-
-    -- Fallback: HttpService:GetAsync (nur wenn in Game HTTP aktiviert)
     local HttpService = game:GetService("HttpService")
     if HttpService and type(HttpService.GetAsync) == "function" then
         return function(url)
-            local ok, res = pcall(function() return HttpService:GetAsync(url) end)
+            local ok,res = pcall(function() return HttpService:GetAsync(url) end)
             if ok then return res end
-            return nil
         end
     end
-
     return nil
 end
 
 local http_get = detect_http_get()
+local loader = loadstring or (syn and syn.loadstring) or (KRNL and KRNL.loadstring) or (Fluxus and Fluxus.loadstring)
 
--- Loader-Erkennung (loadstring oder executor-spezifisch)
-local loader = loadstring
-if not loader then
-    if type(syn) == "table" and syn.loadstring then loader = syn.loadstring end
-    if not loader and type(KRNL) == "table" and KRNL.loadstring then loader = KRNL.loadstring end
-    if not loader and type(Fluxus) == "table" and Fluxus.loadstring then loader = Fluxus.loadstring end
-    if not loader and type(secure_load) == "function" then loader = secure_load end
-end
-
--- Versuch: Orion laden (nur wenn http_get und loader vorhanden)
 local OrionLib = nil
 if loader and http_get then
     local ok, source = pcall(function() return http_get(ORION_URL) end)
-    if ok and type(source) == "string" and #source > 50 then
+    if ok and type(source)=="string" and #source>50 then
         local ok2, chunk = pcall(function() return loader(source) end)
-        if ok2 and type(chunk) == "function" then
+        if ok2 and type(chunk)=="function" then
             local ok3, lib = pcall(chunk)
-            if ok3 and type(lib) == "table" then
+            if ok3 and type(lib)=="table" then
                 OrionLib = lib
-            elseif ok3 and type(lib) == "function" then
-                -- Manche loader-Dateien geben eine Funktion zurück, die beim Aufruf die Lib registriert
+            elseif ok3 and type(lib)=="function" then
                 local ok4, maybeLib = pcall(lib)
-                if ok4 and type(maybeLib) == "table" then
-                    OrionLib = maybeLib
-                end
+                if ok4 and type(maybeLib)=="table" then OrionLib = maybeLib end
             end
         end
     end
 end
 
--- Wenn Orion nicht verfügbar ist: einfache Fallback-Implementation (Minimal-API),
--- damit der Rest deines Scripts unverändert bleiben kann.
+-- Fallback GUI falls Orion nicht geladen
 if not OrionLib then
-    warn("[Fallback] Orion konnte nicht geladen werden — benutze lokale Fallback-GUI")
+    warn("[Fallback] Orion konnte nicht geladen werden — benutze lokale GUI")
     local fallbackScreen = nil
-
     local Fallback = {}
 
     function Fallback:MakeWindow(opts)
-        -- parent: versuche PlayerGui, ansonsten CoreGui (abhängig vom Kontext)
         local parent = (game:GetService("Players").LocalPlayer and game:GetService("Players").LocalPlayer:FindFirstChild("PlayerGui")) or game:GetService("CoreGui")
         fallbackScreen = Instance.new("ScreenGui")
         fallbackScreen.Name = opts.Name or "FallbackUI"
         fallbackScreen.ResetOnSpawn = false
         fallbackScreen.Parent = parent
 
-        -- Hauptframe
         local main = Instance.new("Frame")
         main.Name = "Main"
         main.Size = UDim2.new(0, 340, 0, 420)
         main.Position = UDim2.new(0.5, -170, 0.12, 0)
-        main.BackgroundTransparency = 0.15
         main.BackgroundColor3 = Color3.fromRGB(30,30,30)
         main.BorderSizePixel = 0
         main.Parent = fallbackScreen
+        main.Active = true
+        main.Draggable = true
 
-        -- Titel
         local title = Instance.new("TextLabel")
         title.Parent = main
-        title.Size = UDim2.new(1, 0, 0, 30)
+        title.Size = UDim2.new(1,0,0,30)
         title.Position = UDim2.new(0,0,0,0)
         title.BackgroundTransparency = 1
         title.Text = opts.Name or "Fallback UI"
@@ -115,38 +88,32 @@ if not OrionLib then
         title.Font = Enum.Font.SourceSansSemibold
         title.TextSize = 18
 
-        -- Linke Leiste für Tab-Buttons
         local tabsList = Instance.new("Frame")
         tabsList.Parent = main
-        tabsList.Size = UDim2.new(0, 100, 1, -30)
-        tabsList.Position = UDim2.new(0, 0, 0, 30)
+        tabsList.Size = UDim2.new(0,100,1,-30)
+        tabsList.Position = UDim2.new(0,0,0,30)
         tabsList.BackgroundTransparency = 1
 
-        -- Content-Bereich rechts
         local contentArea = Instance.new("Frame")
         contentArea.Parent = main
-        contentArea.Size = UDim2.new(1, -100, 1, -30)
-        contentArea.Position = UDim2.new(0, 100, 0, 30)
+        contentArea.Size = UDim2.new(1,-100,1,-30)
+        contentArea.Position = UDim2.new(0,100,0,30)
         contentArea.BackgroundTransparency = 1
 
-        -- verwalte Tabs intern
         local tabs = {}
         local function clearContent()
-            for _, child in pairs(contentArea:GetChildren()) do
-                if child:IsA("Frame") and child.Name ~= "placeholder" then
-                    child.Visible = false
-                end
+            for _,child in pairs(contentArea:GetChildren()) do
+                if child:IsA("Frame") then child.Visible=false end
             end
         end
 
         local Window = {}
         function Window:MakeTab(tabOpts)
             local tabName = tabOpts.Name or "Tab"
-            -- Button in linkem Bereich
             local btn = Instance.new("TextButton")
             btn.Parent = tabsList
-            btn.Size = UDim2.new(1, -10, 0, 30)
-            btn.Position = UDim2.new(0, 5, 0, 5 + (#tabs * 35))
+            btn.Size = UDim2.new(1,-10,0,30)
+            btn.Position = UDim2.new(0,5,0,5+(#tabs*35))
             btn.Text = tabName
             btn.BackgroundTransparency = 0.2
             btn.TextColor3 = Color3.fromRGB(230,230,230)
@@ -154,129 +121,93 @@ if not OrionLib then
             btn.TextSize = 14
             btn.AutoButtonColor = true
 
-            -- Content Frame
             local frame = Instance.new("Frame")
             frame.Parent = contentArea
-            frame.Size = UDim2.new(1, -10, 1, -10)
-            frame.Position = UDim2.new(0, 5, 0, 5)
+            frame.Size = UDim2.new(1,-10,1,-10)
+            frame.Position = UDim2.new(0,5,0,5)
             frame.BackgroundTransparency = 1
-            frame.Visible = false
+            frame.Visible=false
 
-            -- on click: show this frame
             btn.MouseButton1Click:Connect(function()
                 clearContent()
                 frame.Visible = true
             end)
 
             local tab = {}
-
-            -- AddSlider: sehr einfacher +/- Slider
             function tab:AddSlider(params)
                 local container = Instance.new("Frame", frame)
-                container.Size = UDim2.new(1, -10, 0, 40)
-                container.Position = UDim2.new(0, 5, 0, (#frame:GetChildren()-1) * 45)
-                container.BackgroundTransparency = 1
-
+                container.Size = UDim2.new(1,-10,0,40)
+                container.Position = UDim2.new(0,5,0,(#frame:GetChildren()-1)*45)
+                container.BackgroundTransparency=1
                 local label = Instance.new("TextLabel", container)
-                label.Size = UDim2.new(0.6,0,1,0)
-                label.Position = UDim2.new(0,0,0,0)
-                label.BackgroundTransparency = 1
-                label.TextXAlignment = Enum.TextXAlignment.Left
-                local value = params.Default or params.Min or 0
-                label.Text = (params.Name or "Slider") .. ": " .. tostring(value)
-                label.TextColor3 = Color3.fromRGB(230,230,230)
-                label.Font = Enum.Font.SourceSans
-                label.TextSize = 14
+                label.Size=UDim2.new(0.6,0,1,0)
+                label.Position=UDim2.new(0,0,0,0)
+                label.BackgroundTransparency=1
+                local value=params.Default or params.Min or 0
+                label.Text=(params.Name or "Slider")..": "..tostring(value)
+                label.TextColor3=Color3.fromRGB(230,230,230)
+                label.Font=Enum.Font.SourceSans
+                label.TextSize=14
 
                 local minus = Instance.new("TextButton", container)
-                minus.Size = UDim2.new(0.2, -5, 1, -6)
-                minus.Position = UDim2.new(0.6, 5, 0, 3)
-                minus.Text = "-"
-                minus.Font = Enum.Font.SourceSansBold
-                minus.TextSize = 18
-
+                minus.Size=UDim2.new(0.2,-5,1,-6)
+                minus.Position=UDim2.new(0.6,5,0,3)
+                minus.Text="-"
+                minus.Font=Enum.Font.SourceSansBold
+                minus.TextSize=18
                 local plus = Instance.new("TextButton", container)
-                plus.Size = UDim2.new(0.2, -5, 1, -6)
-                plus.Position = UDim2.new(0.8, 0, 0, 3)
-                plus.Text = "+"
-                plus.Font = Enum.Font.SourceSansBold
-                plus.TextSize = 18
+                plus.Size=UDim2.new(0.2,-5,1,-6)
+                plus.Position=UDim2.new(0.8,0,0,3)
+                plus.Text="+"
+                plus.Font=Enum.Font.SourceSansBold
+                plus.TextSize=18
 
-                local min = params.Min or 0
-                local max = params.Max or 100
-                local inc = params.Increment or 1
-
+                local min=params.Min or 0
+                local max=params.Max or 100
+                local inc=params.Increment or 1
                 local function apply(v)
-                    value = v
-                    label.Text = (params.Name or "Slider") .. ": " .. tostring(value)
-                    if typeof(params.Callback) == "function" then
-                        pcall(params.Callback, value)
-                    end
+                    value=v
+                    label.Text=(params.Name or "Slider")..": "..tostring(value)
+                    if typeof(params.Callback)=="function" then pcall(params.Callback,value) end
                 end
-
-                minus.MouseButton1Click:Connect(function()
-                    local newV = math.max(min, value - inc)
-                    apply(newV)
-                end)
-                plus.MouseButton1Click:Connect(function()
-                    local newV = math.min(max, value + inc)
-                    apply(newV)
-                end)
-
-                -- initial callback
-                if typeof(params.Callback) == "function" then
-                    pcall(params.Callback, value)
-                end
+                minus.MouseButton1Click:Connect(function() apply(math.max(min,value-inc)) end)
+                plus.MouseButton1Click:Connect(function() apply(math.min(max,value+inc)) end)
+                if typeof(params.Callback)=="function" then pcall(params.Callback,value) end
             end
 
-            -- AddToggle: einfacher On/Off Button
             function tab:AddToggle(params)
                 local btn = Instance.new("TextButton", frame)
-                btn.Size = UDim2.new(1, -10, 0, 30)
-                btn.Position = UDim2.new(0, 5, 0, (#frame:GetChildren()-1) * 35)
-                btn.Text = (params.Name or "Toggle") .. " : " .. (params.Default and "On" or "Off")
-                btn.Font = Enum.Font.SourceSans
-                btn.TextColor3 = Color3.fromRGB(230,230,230)
-                btn.AutoButtonColor = true
-                local state = params.Default or false
+                btn.Size=UDim2.new(1,-10,0,30)
+                btn.Position=UDim2.new(0,5,0,(#frame:GetChildren()-1)*35)
+                local state=params.Default or false
+                btn.Text=(params.Name or "Toggle").." : "..(state and "On" or "Off")
+                btn.Font=Enum.Font.SourceSans
+                btn.TextColor3=Color3.fromRGB(230,230,230)
+                btn.AutoButtonColor=true
                 btn.MouseButton1Click:Connect(function()
-                    state = not state
-                    btn.Text = (params.Name or "Toggle") .. " : " .. (state and "On" or "Off")
-                    if typeof(params.Callback) == "function" then
-                        pcall(params.Callback, state)
-                    end
+                    state=not state
+                    btn.Text=(params.Name or "Toggle").." : "..(state and "On" or "Off")
+                    if typeof(params.Callback)=="function" then pcall(params.Callback,state) end
                 end)
-                -- initial callback
-                if typeof(params.Callback) == "function" then
-                    pcall(params.Callback, state)
-                end
+                if typeof(params.Callback)=="function" then pcall(params.Callback,state) end
             end
 
-            -- AddButton: normaler Knopf
             function tab:AddButton(params)
-                local btn = Instance.new("TextButton", frame)
-                btn.Size = UDim2.new(1, -10, 0, 30)
-                btn.Position = UDim2.new(0, 5, 0, (#frame:GetChildren()-1) * 35)
-                btn.Text = params.Name or "Button"
-                btn.Font = Enum.Font.SourceSans
-                btn.TextColor3 = Color3.fromRGB(230,230,230)
-                btn.AutoButtonColor = true
-                btn.MouseButton1Click:Connect(function()
-                    if typeof(params.Callback) == "function" then
-                        pcall(params.Callback)
-                    end
-                end)
+                local btn=Instance.new("TextButton", frame)
+                btn.Size=UDim2.new(1,-10,0,30)
+                btn.Position=UDim2.new(0,5,0,(#frame:GetChildren()-1)*35)
+                btn.Text=params.Name or "Button"
+                btn.Font=Enum.Font.SourceSans
+                btn.TextColor3=Color3.fromRGB(230,230,230)
+                btn.AutoButtonColor=true
+                btn.MouseButton1Click:Connect(function() if typeof(params.Callback)=="function" then pcall(params.Callback) end end)
             end
 
-            -- return tab-API
-            table.insert(tabs, {btn = btn, frame = frame})
+            table.insert(tabs,{btn=btn,frame=frame})
             return tab
         end
 
-        function Window:Init()
-            -- keine zusätzliche Initialisierung nötig für Fallback
-        end
-
+        function Window:Init() end
         return Window
     end
 
@@ -284,232 +215,130 @@ if not OrionLib then
 
     function Fallback:MakeNotification(params)
         if not fallbackScreen then return end
-        local note = Instance.new("TextLabel", fallbackScreen)
-        note.Size = UDim2.new(0, 250, 0, 50)
-        note.Position = UDim2.new(0.5, -125, 0.05, 0)
-        note.BackgroundTransparency = 0.2
-        note.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-        note.TextColor3 = Color3.fromRGB(255,255,255)
-        note.Font = Enum.Font.SourceSans
-        note.TextSize = 16
-        note.Text = (params.Name and (params.Name .. "\n") or "") .. (params.Content or "")
-        local t = params.Time or 3
-        spawn(function()
-            wait(t)
-            if note and note.Parent then pcall(function() note:Destroy() end) end
-        end)
+        local note=Instance.new("TextLabel", fallbackScreen)
+        note.Size=UDim2.new(0,250,0,50)
+        note.Position=UDim2.new(0.5,-125,0.05,0)
+        note.BackgroundTransparency=0.2
+        note.BackgroundColor3=Color3.fromRGB(20,20,20)
+        note.TextColor3=Color3.fromRGB(255,255,255)
+        note.Font=Enum.Font.SourceSans
+        note.TextSize=16
+        note.Text=(params.Name and (params.Name.."\n") or "")..(params.Content or "")
+        local t=params.Time or 3
+        spawn(function() wait(t) pcall(function() note:Destroy() end) end)
     end
 
     function Fallback:Destroy()
-        if fallbackScreen and fallbackScreen.Parent then
-            pcall(function() fallbackScreen:Destroy() end)
-            fallbackScreen = nil
-        end
+        if fallbackScreen and fallbackScreen.Parent then pcall(function() fallbackScreen:Destroy() end) end
+        fallbackScreen=nil
     end
 
-    OrionLib = Fallback
+    OrionLib=Fallback
 end
 
--- === Ab hier: dein ursprüngliches Script (leicht angepasst, nutzt OrionLib oder Fallback) ===
+-- === GUI erstellen ===
+local Window = OrionLib:MakeWindow({Name="366axtonio Script | v1.0", HidePremium=false, SaveConfig=true, ConfigFolder="UniversalScript"})
 
--- Create the GUI Window
-local Window = OrionLib:MakeWindow({Name = "366axtonio Script | v1.0", HidePremium = false, SaveConfig = true, ConfigFolder = "UniversalScript"})
-
--- ==============================
--- Tab 1: Player Utilities
--- ==============================
-local PlayerTab = Window:MakeTab({
-    Name = "Player",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
-
--- WalkSpeed Slider
-PlayerTab:AddSlider({
-    Name = "WalkSpeed",
-    Min = 16,
-    Max = 500,
-    Default = 16,
-    Color = Color3.fromRGB(255,255,255),
-    Increment = 1,
-    ValueName = "speed",
-    Callback = function(value)
-        local plr = game.Players.LocalPlayer
-        if plr and plr.Character and plr.Character:FindFirstChildOfClass("Humanoid") then
-            pcall(function() plr.Character:FindFirstChildOfClass("Humanoid").WalkSpeed = value end)
-        end
+-- ===== Player Tab =====
+local PlayerTab = Window:MakeTab({Name="Player", Icon="rbxassetid://4483345998", PremiumOnly=false})
+PlayerTab:AddSlider({Name="WalkSpeed", Min=16, Max=500, Default=16, Increment=1, Callback=function(v)
+    local plr=game.Players.LocalPlayer
+    if plr and plr.Character then
+        local hum=plr.Character:FindFirstChildOfClass("Humanoid")
+        if hum then pcall(function() hum.WalkSpeed=v end) end
     end
-})
-
--- JumpPower Slider
-PlayerTab:AddSlider({
-    Name = "JumpPower",
-    Min = 50,
-    Max = 500,
-    Default = 50,
-    Color = Color3.fromRGB(255,255,255),
-    Increment = 1,
-    ValueName = "power",
-    Callback = function(value)
-        local plr = game.Players.LocalPlayer
-        if plr and plr.Character and plr.Character:FindFirstChildOfClass("Humanoid") then
-            pcall(function() plr.Character:FindFirstChildOfClass("Humanoid").JumpPower = value end)
-        end
+end})
+PlayerTab:AddSlider({Name="JumpPower", Min=50, Max=500, Default=50, Increment=1, Callback=function(v)
+    local plr=game.Players.LocalPlayer
+    if plr and plr.Character then
+        local hum=plr.Character:FindFirstChildOfClass("Humanoid")
+        if hum then pcall(function() hum.JumpPower=v end) end
     end
-})
+end})
 
--- ==============================
--- Tab 2: ESP
--- ==============================
-local ESPTab = Window:MakeTab({
-    Name = "ESP",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
-
-local ESPEnabled = false
-local ESPBoxes = {}
-
-ESPTab:AddToggle({
-    Name = "Enable ESP",
-    Default = false,
-    Callback = function(Value)
-        ESPEnabled = Value
-        if ESPEnabled then
-            -- create for existing players
-            for i, player in pairs(game.Players:GetPlayers()) do
-                if player ~= game.Players.LocalPlayer then
-                    if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                        local Billboard = Instance.new("BillboardGui")
-                        Billboard.Name = "ESPBillboard"
-                        Billboard.Size = UDim2.new(0,100,0,50)
-                        Billboard.Adornee = player.Character.HumanoidRootPart
-                        Billboard.AlwaysOnTop = true
-
-                        local TextLabel = Instance.new("TextLabel")
-                        TextLabel.Parent = Billboard
-                        TextLabel.Size = UDim2.new(1,0,1,0)
-                        TextLabel.BackgroundTransparency = 1
-                        TextLabel.TextColor3 = Color3.new(1,0,0)
-                        TextLabel.TextScaled = true
-                        TextLabel.Text = player.Name
-
-                        Billboard.Parent = game.CoreGui
-                        ESPBoxes[player] = Billboard
-                    end
-                end
+-- ===== ESP Tab =====
+local ESPTab = Window:MakeTab({Name="ESP", Icon="rbxassetid://4483345998", PremiumOnly=false})
+local ESPEnabled=false
+local ESPBoxes={}
+ESPTab:AddToggle({Name="Enable ESP", Default=false, Callback=function(Value)
+    ESPEnabled=Value
+    if ESPEnabled then
+        for _,plr in pairs(game.Players:GetPlayers()) do
+            if plr~=game.Players.LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+                local bb=Instance.new("BillboardGui")
+                bb.Name="ESPBillboard"
+                bb.Size=UDim2.new(0,100,0,50)
+                bb.Adornee=plr.Character.HumanoidRootPart
+                bb.AlwaysOnTop=true
+                local label=Instance.new("TextLabel",bb)
+                label.Size=UDim2.new(1,0,1,0)
+                label.BackgroundTransparency=1
+                label.TextColor3=Color3.new(1,0,0)
+                label.TextScaled=true
+                label.Text=plr.Name
+                bb.Parent=game.CoreGui
+                ESPBoxes[plr]=bb
             end
-            -- listen for new characters/players
-            game.Players.PlayerAdded:Connect(function(plr)
-                plr.CharacterAdded:Connect(function(char)
-                    if ESPEnabled and plr ~= game.Players.LocalPlayer and char:FindFirstChild("HumanoidRootPart") then
-                        local Billboard = Instance.new("BillboardGui")
-                        Billboard.Name = "ESPBillboard"
-                        Billboard.Size = UDim2.new(0,100,0,50)
-                        Billboard.Adornee = char.HumanoidRootPart
-                        Billboard.AlwaysOnTop = true
-
-                        local TextLabel = Instance.new("TextLabel")
-                        TextLabel.Parent = Billboard
-                        TextLabel.Size = UDim2.new(1,0,1,0)
-                        TextLabel.BackgroundTransparency = 1
-                        TextLabel.TextColor3 = Color3.new(1,0,0)
-                        TextLabel.TextScaled = true
-                        TextLabel.Text = plr.Name
-
-                        Billboard.Parent = game.CoreGui
-                        ESPBoxes[plr] = Billboard
-                    end
-                end)
+        end
+        game.Players.PlayerAdded:Connect(function(plr)
+            plr.CharacterAdded:Connect(function(char)
+                if ESPEnabled and plr~=game.Players.LocalPlayer and char:FindFirstChild("HumanoidRootPart") then
+                    local bb=Instance.new("BillboardGui")
+                    bb.Name="ESPBillboard"
+                    bb.Size=UDim2.new(0,100,0,50)
+                    bb.Adornee=char.HumanoidRootPart
+                    bb.AlwaysOnTop=true
+                    local label=Instance.new("TextLabel",bb)
+                    label.Size=UDim2.new(1,0,1,0)
+                    label.BackgroundTransparency=1
+                    label.TextColor3=Color3.new(1,0,0)
+                    label.TextScaled=true
+                    label.Text=plr.Name
+                    bb.Parent=game.CoreGui
+                    ESPBoxes[plr]=bb
+                end
             end)
-        else
-            for _, esp in pairs(ESPBoxes) do
-                pcall(function() esp:Destroy() end)
-            end
-            ESPBoxes = {}
-        end
+        end)
+    else
+        for _,b in pairs(ESPBoxes) do pcall(function() b:Destroy() end) end
+        ESPBoxes={}
     end
-})
+end})
 
--- ==============================
--- Tab 3: AutoFarm
--- ==============================
-local FarmTab = Window:MakeTab({
-    Name = "AutoFarm",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
-
-local AutoFarmEnabled = false
-FarmTab:AddToggle({
-    Name = "Auto Farm",
-    Default = false,
-    Callback = function(Value)
-        AutoFarmEnabled = Value
-        spawn(function()
-            while AutoFarmEnabled do
-                wait(0.5)
-                -- Beispiel: Auto click/collect (passt du pro Spiel an)
-                local plr = game.Players.LocalPlayer
-                if plr and plr:FindFirstChild("PlayerGui") then
-                    local ClickButton = plr.PlayerGui:FindFirstChild("ClickButton")
-                    if ClickButton and ClickButton:IsA("RemoteEvent") then
-                        pcall(function() ClickButton:FireServer() end)
-                    elseif ClickButton and ClickButton:IsA("TextButton") then
-                        -- lokaler Button: fehlerfrei anklicken
-                        pcall(function() ClickButton:Activate() end)
-                    end
+-- ===== AutoFarm Tab =====
+local FarmTab = Window:MakeTab({Name="AutoFarm", Icon="rbxassetid://4483345998", PremiumOnly=false})
+local AutoFarmEnabled=false
+FarmTab:AddToggle({Name="Auto Farm", Default=false, Callback=function(Value)
+    AutoFarmEnabled=Value
+    spawn(function()
+        while AutoFarmEnabled do
+            wait(0.5)
+            local plr=game.Players.LocalPlayer
+            if plr and plr:FindFirstChild("PlayerGui") then
+                local btn=plr.PlayerGui:FindFirstChild("ClickButton")
+                if btn then
+                    if btn:IsA("RemoteEvent") then pcall(function() btn:FireServer() end)
+                    elseif btn:IsA("TextButton") then pcall(function() btn:Activate() end) end
                 end
             end
-        end)
-    end
-})
-
--- ==============================
--- Tab 4: Misc
--- ==============================
-local MiscTab = Window:MakeTab({
-    Name = "Misc",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
-
-MiscTab:AddButton({
-    Name = "Rejoin Server",
-    Callback = function()
-        local TeleportService = game:GetService("TeleportService")
-        pcall(function() TeleportService:Teleport(game.PlaceId, game.Players.LocalPlayer) end)
-    end
-})
-
-MiscTab:AddButton({
-    Name = "Destroy GUI",
-    Callback = function()
-        -- real Orion: OrionLib:Destroy(), fallback: Fallback:Destroy()
-        if OrionLib and type(OrionLib.Destroy) == "function" then
-            pcall(function() OrionLib:Destroy() end)
-        else
-            pcall(function() OrionLib.Destroy() end)
         end
-    end
-})
+    end)
+end})
 
--- ==============================
--- Themes & Init
--- ==============================
-if OrionLib and type(OrionLib.Init) == "function" then
-    pcall(function() OrionLib:Init() end)
-end
+-- ===== Misc Tab =====
+local MiscTab = Window:MakeTab({Name="Misc", Icon="rbxassetid://4483345998", PremiumOnly=false})
+MiscTab:AddButton({Name="Rejoin Server", Callback=function()
+    local ts=game:GetService("TeleportService")
+    pcall(function() ts:Teleport(game.PlaceId, game.Players.LocalPlayer) end)
+end})
+MiscTab:AddButton({Name="Destroy GUI", Callback=function()
+    if OrionLib and type(OrionLib.Destroy)=="function" then pcall(function() OrionLib:Destroy() end) end
+end})
 
-if OrionLib and type(OrionLib.MakeNotification) == "function" then
+-- ===== Init & Notification =====
+if OrionLib and type(OrionLib.Init)=="function" then pcall(function() OrionLib:Init() end) end
+if OrionLib and type(OrionLib.MakeNotification)=="function" then
     pcall(function()
-        OrionLib:MakeNotification({
-            Name = "Loaded",
-            Content = "Axtonio Script loaded successfully!",
-            Image = "rbxassetid://4483345998",
-            Time = 5
-        })
+        OrionLib:MakeNotification({Name="Loaded", Content="Axtonio Script loaded successfully!", Time=5})
     end)
 end
-
--- Ende des Skripts
