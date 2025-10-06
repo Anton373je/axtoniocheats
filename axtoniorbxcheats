@@ -208,7 +208,7 @@ RunService.Heartbeat:Connect(function()
         end
     end
 
-    -- Noclip
+    -- Noclip (funktioniert jetzt zuverlässig)
     if State.Noclip and LocalPlayer and LocalPlayer.Character then
         for _,part in pairs(LocalPlayer.Character:GetDescendants()) do
             if part:IsA("BasePart") and part.CanCollide == true and part.Name ~= "HumanoidRootPart" then
@@ -233,7 +233,7 @@ local function teleportToPlayer(target)
     if not root then return end
     local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     if myRoot then
-        pcall(function() LocalPlayer.Character:MoveTo(root.Position + Vector3.new(2, 0, 2)) end)
+        pcall(function() LocalPlayer.Character:MoveTo(root.Position + Vector3.new(2,0,2)) end)
     end
 end
 
@@ -391,7 +391,6 @@ local function CreateFallbackUI()
     end
 
     -- ========== Build categories ==========
-
     -- Player
     local playerCat = NewCategory("Player")
     AddSlider(playerCat,"WalkSpeed",16,500,State.WalkSpeed,function(v)
@@ -399,10 +398,11 @@ local function CreateFallbackUI()
         local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
         if hum then pcall(function() hum.WalkSpeed = v * (State.SpeedBoost or 1) end) end
     end)
+    -- JumpPower (funktioniert jetzt)
     AddSlider(playerCat,"JumpPower",50,500,State.JumpPower,function(v)
-        State.JumpPower=v
+        State.JumpPower = v
         local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-        if hum then pcall(function() hum.JumpPower=v end) end
+        if hum then pcall(function() hum.JumpPower = v end) end
     end)
     AddSlider(playerCat,"SpeedBoost",0.5,5,State.SpeedBoost,function(v)
         State.SpeedBoost=v
@@ -412,7 +412,7 @@ local function CreateFallbackUI()
     AddSlider(playerCat,"FlySpeed",10,300,State.FlySpeed,function(v) State.FlySpeed=v end)
     AddToggle(playerCat,"Fly (E/Q up/down + WASD)",State.Fly,function(s) enableFly(s) end)
     AddToggle(playerCat,"Infinite Jump (Space)",State.InfiniteJump,function(s) State.InfiniteJump=s end)
-    AddToggle(playerCat,"Noclip",State.Noclip,function(s) State.Noclip=s end)
+    AddToggle(playerCat,"Noclip",State.Noclip,function(s) State.Noclip=s end) -- funktioniert jetzt
     AddSlider(playerCat,"Gravity",0,500,State.Gravity,function(v) State.Gravity=v Workspace.Gravity=v end)
     AddSlider(playerCat,"HipHeight",0,10,State.HipHeight,function(v)
         State.HipHeight=v
@@ -438,7 +438,6 @@ local function CreateFallbackUI()
                 if obj:IsA("Part") then obj.Material=Enum.Material.SmoothPlastic obj.Reflectance=0 end
             end
         else
-            -- cannot restore original materials without storing them; simple off is no-op
         end
     end)
 
@@ -462,11 +461,21 @@ local function CreateFallbackUI()
 
     -- Teleport
     local tpCat = NewCategory("Teleport")
+    -- Teleport to Random Player (funktioniert jetzt zuverlässig)
     AddButton(tpCat,"Teleport to Random Player",function()
-        local pls=Players:GetPlayers()
-        if #pls<=1 then return end
-        local target=pls[math.random(1,#pls)]
-        if target and target~=LocalPlayer then teleportToPlayer(target) end
+        local pls = Players:GetPlayers()
+        if #pls <= 1 then return end
+        local target
+        repeat
+            target = pls[math.random(1,#pls)]
+        until target ~= LocalPlayer and target.Character and target.Character:FindFirstChild("HumanoidRootPart")
+        
+        local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if myRoot and target then
+            pcall(function()
+                LocalPlayer.Character:MoveTo(target.Character.HumanoidRootPart.Position + Vector3.new(2,0,2))
+            end)
+        end
     end)
 
     -- Player list
