@@ -1,219 +1,196 @@
---[[ 
-    366axtonio Script | v2.0
-    - OrionLib (wenn verfügbar)
-    - Neues Fallback-GUI: Modern, geordnet, mit richtigen Slidern
-    - Features: Player, ESP, AutoFarm, Misc, Teleport
---]]
+-- 366axtonio Script v2.1
+-- Komplettes Multi-Tab Fallback GUI mit Slidern, Toggles & Buttons
 
-local ORION_URL = "https://raw.githubusercontent.com/shlexware/Orion/main/source"
+local screen=Instance.new("ScreenGui",game:GetService("CoreGui"))
+screen.Name="AxtonioUIv2"
 
--- ==== HTTP Detection ====
-local function detect_http_get()
-    if pcall(function() return game.HttpGet end) and type(game.HttpGet)=="function" then
-        return function(url) return game:HttpGet(url,true) end
-    end
-    if syn and type(syn.request)=="function" then
-        return function(url) local r=syn.request({Url=url,Method="GET"}) return r and r.Body end
-    end
-    if http and type(http.request)=="function" then
-        return function(url) local r=http.request({Url=url,Method="GET"}) return r and r.Body end
-    end
-    local HttpService=game:GetService("HttpService")
-    if HttpService and type(HttpService.GetAsync)=="function" then
-        return function(url) return HttpService:GetAsync(url) end
-    end
-    return nil
+local main=Instance.new("Frame",screen)
+main.Size=UDim2.new(0,650,0,420)
+main.Position=UDim2.new(0.5,-325,0.25,0)
+main.BackgroundColor3=Color3.fromRGB(25,25,25)
+main.Active=true
+main.Draggable=true
+
+local title=Instance.new("TextLabel",main)
+title.Size=UDim2.new(1,0,0,40)
+title.BackgroundTransparency=1
+title.Text="366axtonio Script | v2.1"
+title.Font=Enum.Font.GothamBold
+title.TextSize=22
+title.TextColor3=Color3.fromRGB(255,255,255)
+
+local tabs=Instance.new("Frame",main)
+tabs.Size=UDim2.new(0,130,1,-40)
+tabs.Position=UDim2.new(0,0,0,40)
+tabs.BackgroundColor3=Color3.fromRGB(20,20,20)
+
+local content=Instance.new("Frame",main)
+content.Size=UDim2.new(1,-130,1,-40)
+content.Position=UDim2.new(0,130,0,40)
+content.BackgroundTransparency=1
+
+-- Tab-System
+local TabSystem={Tabs={},Current=nil}
+function TabSystem:AddTab(name)
+    local btn=Instance.new("TextButton",tabs)
+    btn.Size=UDim2.new(1,0,0,40)
+    btn.Text=name
+    btn.Font=Enum.Font.Gotham
+    btn.TextSize=16
+    btn.TextColor3=Color3.fromRGB(230,230,230)
+    btn.BackgroundColor3=Color3.fromRGB(35,35,35)
+    btn.MouseEnter:Connect(function() btn.BackgroundColor3=Color3.fromRGB(50,50,50) end)
+    btn.MouseLeave:Connect(function() btn.BackgroundColor3=Color3.fromRGB(35,35,35) end)
+
+    local frame=Instance.new("Frame",content)
+    frame.Size=UDim2.new(1,0,1,0)
+    frame.BackgroundTransparency=1
+    frame.Visible=false
+    local lay=Instance.new("UIListLayout",frame)
+    lay.Padding=UDim.new(0,8)
+    lay.SortOrder=Enum.SortOrder.LayoutOrder
+
+    btn.MouseButton1Click:Connect(function()
+        if TabSystem.Current then TabSystem.Current.Visible=false end
+        frame.Visible=true
+        TabSystem.Current=frame
+    end)
+
+    self.Tabs[name]=frame
+    if not self.Current then frame.Visible=true self.Current=frame end
+    return frame
 end
 
-local http_get=detect_http_get()
-local loader=loadstring or (syn and syn.loadstring)
-
-local OrionLib=nil
-if loader and http_get then
-    local ok,src=pcall(function() return http_get(ORION_URL) end)
-    if ok and src and #src>50 then
-        local ok2,lib=pcall(loader(src))
-        if ok2 and type(lib)=="table" then OrionLib=lib end
-    end
+-- UI Elemente
+local function AddButton(parent,text,callback)
+    local btn=Instance.new("TextButton",parent)
+    btn.Size=UDim2.new(0.95,0,0,35)
+    btn.Text=text
+    btn.Font=Enum.Font.Gotham
+    btn.TextSize=16
+    btn.TextColor3=Color3.fromRGB(255,255,255)
+    btn.BackgroundColor3=Color3.fromRGB(70,70,70)
+    btn.MouseButton1Click:Connect(callback)
 end
 
--- ==== Modern Fallback ====
-if not OrionLib then
-    warn("[Fallback] Orion konnte nicht geladen werden. Verwende modernes Fallback-GUI.")
-    local Fallback={}
-    local screen=Instance.new("ScreenGui",game:GetService("CoreGui"))
-    screen.Name="AxtonioUIv2"
-
-    local main=Instance.new("Frame",screen)
-    main.Size=UDim2.new(0,600,0,400)
-    main.Position=UDim2.new(0.5,-300,0.2,0)
-    main.BackgroundColor3=Color3.fromRGB(25,25,25)
-    main.BorderSizePixel=0
-    main.Active=true
-    main.Draggable=true
-
-    local title=Instance.new("TextLabel",main)
-    title.Size=UDim2.new(1,0,0,40)
-    title.BackgroundTransparency=1
-    title.Text="366axtonio Script | v2.0"
-    title.Font=Enum.Font.GothamBold
-    title.TextSize=22
-    title.TextColor3=Color3.fromRGB(255,255,255)
-
-    local tabs=Instance.new("Frame",main)
-    tabs.Size=UDim2.new(0,120,1,-40)
-    tabs.Position=UDim2.new(0,0,0,40)
-    tabs.BackgroundColor3=Color3.fromRGB(20,20,20)
-
-    local content=Instance.new("Frame",main)
-    content.Size=UDim2.new(1,-120,1,-40)
-    content.Position=UDim2.new(0,120,0,40)
-    content.BackgroundTransparency=1
-
-    local contentLayout=Instance.new("UIListLayout",content)
-    contentLayout.Padding=UDim.new(0,10)
-    contentLayout.HorizontalAlignment=Enum.HorizontalAlignment.Left
-    contentLayout.SortOrder=Enum.SortOrder.LayoutOrder
-
-    -- Tabs Manager
-    local TabSystem={Tabs={},Current=nil}
-    function TabSystem:AddTab(name)
-        local btn=Instance.new("TextButton",tabs)
-        btn.Size=UDim2.new(1,0,0,40)
-        btn.Text=name
-        btn.Font=Enum.Font.Gotham
-        btn.TextSize=16
-        btn.TextColor3=Color3.fromRGB(230,230,230)
-        btn.BackgroundColor3=Color3.fromRGB(35,35,35)
-        btn.MouseEnter:Connect(function() btn.BackgroundColor3=Color3.fromRGB(50,50,50) end)
-        btn.MouseLeave:Connect(function() btn.BackgroundColor3=Color3.fromRGB(35,35,35) end)
-
-        local frame=Instance.new("Frame",content)
-        frame.Size=UDim2.new(1,0,1,0)
-        frame.BackgroundTransparency=1
-        frame.Visible=false
-        local lay=Instance.new("UIListLayout",frame)
-        lay.Padding=UDim.new(0,8)
-        lay.SortOrder=Enum.SortOrder.LayoutOrder
-
-        btn.MouseButton1Click:Connect(function()
-            if TabSystem.Current then TabSystem.Current.Visible=false end
-            frame.Visible=true
-            TabSystem.Current=frame
-        end)
-
-        self.Tabs[name]=frame
-        if not self.Current then
-            frame.Visible=true
-            self.Current=frame
-        end
-        return frame
-    end
-
-    -- UI Elements
-    local function AddButton(parent,text,callback)
-        local btn=Instance.new("TextButton",parent)
-        btn.Size=UDim2.new(0.95,0,0,35)
-        btn.Text=text
-        btn.Font=Enum.Font.Gotham
-        btn.TextSize=16
-        btn.TextColor3=Color3.fromRGB(255,255,255)
-        btn.BackgroundColor3=Color3.fromRGB(70,70,70)
-        btn.MouseEnter:Connect(function() btn.BackgroundColor3=Color3.fromRGB(90,90,90) end)
-        btn.MouseLeave:Connect(function() btn.BackgroundColor3=Color3.fromRGB(70,70,70) end)
-        btn.MouseButton1Click:Connect(callback)
-    end
-
-    local function AddToggle(parent,text,default,callback)
-        local state=default or false
-        local btn=Instance.new("TextButton",parent)
-        btn.Size=UDim2.new(0.95,0,0,35)
+local function AddToggle(parent,text,default,callback)
+    local state=default or false
+    local btn=Instance.new("TextButton",parent)
+    btn.Size=UDim2.new(0.95,0,0,35)
+    btn.Text=text.." : "..(state and "On" or "Off")
+    btn.Font=Enum.Font.Gotham
+    btn.TextSize=16
+    btn.TextColor3=Color3.fromRGB(255,255,255)
+    btn.BackgroundColor3=Color3.fromRGB(70,70,70)
+    btn.MouseButton1Click:Connect(function()
+        state=not state
         btn.Text=text.." : "..(state and "On" or "Off")
-        btn.Font=Enum.Font.Gotham
-        btn.TextSize=16
-        btn.TextColor3=Color3.fromRGB(255,255,255)
-        btn.BackgroundColor3=Color3.fromRGB(70,70,70)
-        btn.MouseButton1Click:Connect(function()
-            state=not state
-            btn.Text=text.." : "..(state and "On" or "Off")
-            callback(state)
-        end)
-    end
-
-    local function AddSlider(parent,text,min,max,default,callback)
-        local value=default or min
-        local frame=Instance.new("Frame",parent)
-        frame.Size=UDim2.new(0.95,0,0,40)
-        frame.BackgroundColor3=Color3.fromRGB(50,50,50)
-
-        local label=Instance.new("TextLabel",frame)
-        label.Size=UDim2.new(1,0,0.4,0)
-        label.Text=text.." : "..value
-        label.Font=Enum.Font.Gotham
-        label.TextSize=14
-        label.TextColor3=Color3.new(1,1,1)
-        label.BackgroundTransparency=1
-
-        local bar=Instance.new("Frame",frame)
-        bar.Size=UDim2.new(0.9,0,0.2,0)
-        bar.Position=UDim2.new(0.05,0,0.6,0)
-        bar.BackgroundColor3=Color3.fromRGB(90,90,90)
-
-        local drag=Instance.new("Frame",bar)
-        drag.Size=UDim2.new((value-min)/(max-min),0,1,0)
-        drag.BackgroundColor3=Color3.fromRGB(150,150,255)
-
-        local function setValue(x)
-            local percent=math.clamp((x-bar.AbsolutePosition.X)/bar.AbsoluteSize.X,0,1)
-            value=math.floor(min+percent*(max-min))
-            drag.Size=UDim2.new(percent,0,1,0)
-            label.Text=text.." : "..value
-            callback(value)
-        end
-
-        bar.InputBegan:Connect(function(input)
-            if input.UserInputType==Enum.UserInputType.MouseButton1 then
-                setValue(game:GetService("UserInputService"):GetMouseLocation().X)
-                local move,release
-                move=game:GetService("UserInputService").InputChanged:Connect(function(i)
-                    if i.UserInputType==Enum.UserInputType.MouseMovement then
-                        setValue(i.Position.X)
-                    end
-                end)
-                release=game:GetService("UserInputService").InputEnded:Connect(function(i)
-                    if i.UserInputType==Enum.UserInputType.MouseButton1 then
-                        move:Disconnect() release:Disconnect()
-                    end
-                end)
-            end
-        end)
-    end
-
-    -- === Tabs & Features ===
-    local playerTab=TabSystem:AddTab("Player")
-    AddSlider(playerTab,"WalkSpeed",16,500,16,function(v)
-        local hum=game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-        if hum then hum.WalkSpeed=v end
+        callback(state)
     end)
-    AddSlider(playerTab,"JumpPower",50,500,50,function(v)
-        local hum=game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-        if hum then hum.JumpPower=v end
-    end)
-    AddToggle(playerTab,"Infinite Jump",false,function(state)
-        local UIS=game:GetService("UserInputService")
-        UIS.JumpRequest:Connect(function()
-            if state then game.Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid"):ChangeState("Jumping") end
-        end)
-    end)
-
-    local miscTab=TabSystem:AddTab("Misc")
-    AddButton(miscTab,"Rejoin Server",function()
-        game:GetService("TeleportService"):Teleport(game.PlaceId,game.Players.LocalPlayer)
-    end)
-    AddButton(miscTab,"Destroy GUI",function() screen:Destroy() end)
-
-    OrionLib=Fallback
 end
 
--- ===== Init Orion if exists =====
-if OrionLib and OrionLib.Init then pcall(function() OrionLib:Init() end) end
+local function AddSlider(parent,text,min,max,default,callback)
+    local value=default or min
+    local frame=Instance.new("Frame",parent)
+    frame.Size=UDim2.new(0.95,0,0,40)
+    frame.BackgroundColor3=Color3.fromRGB(50,50,50)
+
+    local label=Instance.new("TextLabel",frame)
+    label.Size=UDim2.new(1,0,0.4,0)
+    label.Text=text.." : "..value
+    label.Font=Enum.Font.Gotham
+    label.TextSize=14
+    label.TextColor3=Color3.new(1,1,1)
+    label.BackgroundTransparency=1
+
+    local bar=Instance.new("Frame",frame)
+    bar.Size=UDim2.new(0.9,0,0.2,0)
+    bar.Position=UDim2.new(0.05,0,0.6,0)
+    bar.BackgroundColor3=Color3.fromRGB(90,90,90)
+
+    local drag=Instance.new("Frame",bar)
+    drag.Size=UDim2.new((value-min)/(max-min),0,1,0)
+    drag.BackgroundColor3=Color3.fromRGB(150,150,255)
+
+    local function setValue(x)
+        local percent=math.clamp((x-bar.AbsolutePosition.X)/bar.AbsoluteSize.X,0,1)
+        value=math.floor(min+percent*(max-min))
+        drag.Size=UDim2.new(percent,0,1,0)
+        label.Text=text.." : "..value
+        callback(value)
+    end
+
+    bar.InputBegan:Connect(function(input)
+        if input.UserInputType==Enum.UserInputType.MouseButton1 then
+            setValue(game:GetService("UserInputService"):GetMouseLocation().X)
+            local move,release
+            move=game:GetService("UserInputService").InputChanged:Connect(function(i)
+                if i.UserInputType==Enum.UserInputType.MouseMovement then
+                    setValue(i.Position.X)
+                end
+            end)
+            release=game:GetService("UserInputService").InputEnded:Connect(function(i)
+                if i.UserInputType==Enum.UserInputType.MouseButton1 then
+                    move:Disconnect() release:Disconnect()
+                end
+            end)
+        end
+    end)
+end
+
+-- Tabs & Features
+local playerTab=TabSystem:AddTab("Player")
+AddSlider(playerTab,"WalkSpeed",16,300,16,function(v)
+    local hum=game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+    if hum then hum.WalkSpeed=v end
+end)
+AddSlider(playerTab,"JumpPower",50,300,50,function(v)
+    local hum=game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+    if hum then hum.JumpPower=v end
+end)
+AddToggle(playerTab,"Infinite Jump",false,function(state)
+    local UIS=game:GetService("UserInputService")
+    UIS.JumpRequest:Connect(function()
+        if state then game.Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid"):ChangeState("Jumping") end
+    end)
+end)
+AddSlider(playerTab,"FlySpeed",1,200,50,function(v) _G.FlySpeed=v end)
+AddToggle(playerTab,"Fly",false,function(state)
+    if state then
+        local plr=game.Players.LocalPlayer
+        local hum=plr.Character:FindFirstChildOfClass("Humanoid")
+        local UIS=game:GetService("UserInputService")
+        local RS=game:GetService("RunService").RenderStepped
+        local fly=true
+        coroutine.wrap(function()
+            while fly and state do
+                local cf=plr.Character.HumanoidRootPart.CFrame
+                if UIS:IsKeyDown(Enum.KeyCode.W) then plr.Character:TranslateBy(cf.LookVector*_G.FlySpeed/100) end
+                if UIS:IsKeyDown(Enum.KeyCode.S) then plr.Character:TranslateBy(-cf.LookVector*_G.FlySpeed/100) end
+                RS:Wait()
+            end
+        end)()
+    end
+end)
+
+local espTab=TabSystem:AddTab("ESP")
+AddToggle(espTab,"Enable ESP",false,function(state) print("ESP:",state) end)
+AddSlider(espTab,"ESP Range",50,1000,300,function(v) print("ESP Range:",v) end)
+
+local autoTab=TabSystem:AddTab("AutoFarm")
+AddToggle(autoTab,"AutoFarm",false,function(state) print("AutoFarm:",state) end)
+AddSlider(autoTab,"Farm Speed",1,50,10,function(v) print("FarmSpeed:",v) end)
+
+local miscTab=TabSystem:AddTab("Misc")
+AddButton(miscTab,"Rejoin Server",function() game:GetService("TeleportService"):Teleport(game.PlaceId,game.Players.LocalPlayer) end)
+AddButton(miscTab,"ServerHop",function() print("ServerHop Triggered") end)
+AddButton(miscTab,"Destroy GUI",function() screen:Destroy() end)
+
+local tpTab=TabSystem:AddTab("Teleport")
+AddButton(tpTab,"TP to Random Player",function()
+    local players=game.Players:GetPlayers()
+    local plr=players[math.random(1,#players)]
+    if plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+        game.Players.LocalPlayer.Character:MoveTo(plr.Character.HumanoidRootPart.Position+Vector3.new(2,0,2))
+    end
+end)
