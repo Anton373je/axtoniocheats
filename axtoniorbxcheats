@@ -1,16 +1,17 @@
 --[[ 
-    366axtonio Script | v3.2 — Single-page categorized GUI + Kill Aura
+    366axtonio Script | v3.3 — Single-page categorized GUI + Kill Aura + ESP/Hitbox Scaling
     Features:
         - WalkSpeed, JumpPower, SpeedBoost
         - Fly + FlySpeed, InfiniteJump, Noclip
-        - ESP (Name + Box)
+        - ESP (Name + Box) + ESP Box Size Slider
         - AutoFarm
         - Teleport / Random Player / Player List
         - Rejoin, ServerHop, Destroy GUI
         - Gravity Slider, HipHeight Slider, FOV Slider
         - Sit Button, Reset Character Button
         - Server FPS Booster
-        - NEW: Kill Aura (toggle + range)
+        - Kill Aura (toggle + range)
+        - Hitbox Size Slider
 --]]
 
 -- ========== Utility / Loader ==========
@@ -73,7 +74,9 @@ local State = {
     FOV = 70,
     FPSBooster = false,
     KillAura = false,
-    KillAuraRange = 10
+    KillAuraRange = 10,
+    ESPBoxSize = 1,
+    HitboxScale = 1
 }
 
 local function getHumanoidRoot(plr)
@@ -111,7 +114,7 @@ local function createESP(plr)
     local box = Instance.new("BoxHandleAdornment")
     box.Name = "ESPBox"
     box.Adornee = root
-    box.Size = root.Size
+    box.Size = root.Size * (State.ESPBoxSize or 1)
     box.Color3 = Color3.fromRGB(255,100,100)
     box.AlwaysOnTop = true
     box.Transparency = 0.5
@@ -257,8 +260,6 @@ end)
 
 -- ========== Fallback GUI ==========
 local function CreateFallbackUI()
-    -- (GUI-Code unverändert, nur neue Kill Aura Controls hinzufügen)
-    -- Clear existing
     pcall(function()
         local existing = game.CoreGui:FindFirstChild("AxtonioUI_v3")
         if existing then existing:Destroy() end
@@ -440,6 +441,7 @@ local function CreateFallbackUI()
         State.FOV=v
         if workspace.CurrentCamera then workspace.CurrentCamera.FieldOfView=v end
     end)
+    AddSlider(playerCat,"Hitbox Size",0.5,3,State.HitboxScale,function(v) State.HitboxScale=v end)
     AddButton(playerCat,"Sit",function()
         local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
         if hum then hum.Sit=true end
@@ -463,6 +465,16 @@ local function CreateFallbackUI()
     AddToggle(espCat,"Enable ESP",State.ESP,function(s)
         State.ESP=s
         if s then for _,p in pairs(Players:GetPlayers()) do createESP(p) end else destroyAllESP() end
+    end)
+    AddSlider(espCat,"ESP Box Size",0.5,3,State.ESPBoxSize,function(v)
+        State.ESPBoxSize=v
+        for _,info in pairs(ESPMap) do
+            pcall(function()
+                if info.Box and info.Box.Adornee then
+                    info.Box.Size = info.Box.Adornee.Size * v
+                end
+            end)
+        end
     end)
 
     -- AutoFarm
@@ -546,4 +558,15 @@ spawn(function()
     end
     if workspace.CurrentCamera then workspace.CurrentCamera.FieldOfView=State.FOV end
     Workspace.Gravity = State.Gravity
+end)
+
+-- ===== Heartbeat für permanente Hitbox-Anpassung =====
+RunService.Heartbeat:Connect(function()
+    local char = LocalPlayer.Character
+    if char then
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if root then
+            root.Size = Vector3.new(2,2,1) * (State.HitboxScale or 1)
+        end
+    end
 end)
