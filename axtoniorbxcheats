@@ -131,8 +131,22 @@ local function destroyAllESP()
     ESPMap = {}
 end
 
+-- ESP aktualisieren, wenn Spieler respawnen
+local function refreshESP(plr)
+    if State.ESP then
+        pcall(function()
+            if ESPMap[plr] then
+                if ESPMap[plr].Gui then ESPMap[plr].Gui:Destroy() end
+                if ESPMap[plr].Box then ESPMap[plr].Box:Destroy() end
+                ESPMap[plr]=nil
+            end
+            createESP(plr)
+        end)
+    end
+end
+
 Players.PlayerAdded:Connect(function(p)
-    p.CharacterAdded:Connect(function() if State.ESP then createESP(p) end end)
+    p.CharacterAdded:Connect(function() refreshESP(p) end)
 end)
 Players.PlayerRemoving:Connect(function(p)
     if ESPMap[p] then
@@ -216,6 +230,15 @@ RunService.Heartbeat:Connect(function()
             if part:IsA("BasePart") and part.CanCollide == true and part.Name ~= "HumanoidRootPart" then
                 pcall(function() part.CanCollide = false end)
             end
+        end
+    end
+
+    -- Permanent Hitbox-Anpassung für LocalPlayer
+    local char = LocalPlayer.Character
+    if char then
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if root then
+            root.Size = Vector3.new(2,2,1) * (State.HitboxScale or 1)
         end
     end
 end)
@@ -558,15 +581,4 @@ spawn(function()
     end
     if workspace.CurrentCamera then workspace.CurrentCamera.FieldOfView=State.FOV end
     Workspace.Gravity = State.Gravity
-end)
-
--- ===== Heartbeat für permanente Hitbox-Anpassung =====
-RunService.Heartbeat:Connect(function()
-    local char = LocalPlayer.Character
-    if char then
-        local root = char:FindFirstChild("HumanoidRootPart")
-        if root then
-            root.Size = Vector3.new(2,2,1) * (State.HitboxScale or 1)
-        end
-    end
 end)
