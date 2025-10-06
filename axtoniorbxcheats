@@ -711,6 +711,131 @@ local function CreateFallbackUI()
     UpdateCanvas()
     return screen
 end
+-- ======== Bring / Control Players ========
+local controlCat = NewCategory("Bring / Control Players")
+
+local function bringPlayerToMe(target)
+    if not target or not target.Character then return end
+    local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    local targetRoot = target.Character:FindFirstChild("HumanoidRootPart")
+    if myRoot and targetRoot then
+        pcall(function()
+            targetRoot.CFrame = myRoot.CFrame + Vector3.new(2,0,2)
+        end)
+    end
+end
+
+local function freezePlayer(target, freeze)
+    if not target or not target.Character then return end
+    local hum = target.Character:FindFirstChildOfClass("Humanoid")
+    if hum then
+        if freeze then
+            hum.WalkSpeed = 0
+            hum.JumpPower = 0
+            hum.PlatformStand = true
+        else
+            hum.WalkSpeed = 16
+            hum.JumpPower = 50
+            hum.PlatformStand = false
+        end
+    end
+end
+
+local function ragdollPlayer(target)
+    if not target or not target.Character then return end
+    local hum = target.Character:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum.PlatformStand = true
+        for _, part in pairs(target.Character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.Anchored = false
+            end
+        end
+        -- nach 5 Sekunden automatisch wieder freigeben
+        delay(5, function()
+            if hum then hum.PlatformStand = false end
+        end)
+    end
+end
+
+-- ScrollFrame für Spieler-Buttons
+local controlList = Instance.new("ScrollingFrame", controlCat)
+controlList.Size = UDim2.new(1,-12,0,180)
+controlList.BackgroundTransparency = 1
+controlList.ScrollBarThickness = 6
+local controlLayout = Instance.new("UIListLayout", controlList)
+controlLayout.SortOrder = Enum.SortOrder.LayoutOrder
+controlLayout.Padding = UDim.new(0,4)
+
+-- Buttons für jeden Spieler dynamisch erstellen
+local function refreshControlButtons()
+    for _,c in pairs(controlList:GetChildren()) do
+        if not c:IsA("UIListLayout") then pcall(function() c:Destroy() end) end
+    end
+
+    for _,p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then
+            -- Container für jeden Spieler
+            local container = Instance.new("Frame", controlList)
+            container.Size = UDim2.new(1,0,0,84)
+            container.BackgroundTransparency = 1
+
+            local nameLabel = Instance.new("TextLabel", container)
+            nameLabel.Size = UDim2.new(1,0,0,20)
+            nameLabel.Position = UDim2.new(0,0,0,0)
+            nameLabel.Text = p.Name
+            nameLabel.Font = Enum.Font.GothamBold
+            nameLabel.TextSize = 14
+            nameLabel.TextColor3 = Color3.fromRGB(240,240,240)
+            nameLabel.BackgroundTransparency = 1
+
+            -- Teleport To Me Button
+            local tpBtn = Instance.new("TextButton", container)
+            tpBtn.Size = UDim2.new(1,0,0,20)
+            tpBtn.Position = UDim2.new(0,0,0,24)
+            tpBtn.Text = "Teleport To Me"
+            tpBtn.Font = Enum.Font.Gotham
+            tpBtn.TextSize = 14
+            tpBtn.TextColor3 = Color3.fromRGB(255,255,255)
+            tpBtn.BackgroundColor3 = Color3.fromRGB(80,80,80)
+            tpBtn.AutoButtonColor = true
+            tpBtn.MouseButton1Click:Connect(function() bringPlayerToMe(p) end)
+
+            -- Freeze Toggle Button
+            local freezeBtn = Instance.new("TextButton", container)
+            freezeBtn.Size = UDim2.new(1,0,0,20)
+            freezeBtn.Position = UDim2.new(0,0,0,48)
+            freezeBtn.Text = "Freeze"
+            freezeBtn.Font = Enum.Font.Gotham
+            freezeBtn.TextSize = 14
+            freezeBtn.TextColor3 = Color3.fromRGB(255,255,255)
+            freezeBtn.BackgroundColor3 = Color3.fromRGB(80,80,80)
+            freezeBtn.AutoButtonColor = true
+            freezeBtn.MouseButton1Click:Connect(function()
+                local frozen = p:GetAttribute("Frozen") or false
+                freezePlayer(p, not frozen)
+                p:SetAttribute("Frozen", not frozen)
+                freezeBtn.Text = not frozen and "Unfreeze" or "Freeze"
+            end)
+
+            -- Ragdoll Button
+            local ragdollBtn = Instance.new("TextButton", container)
+            ragdollBtn.Size = UDim2.new(1,0,0,20)
+            ragdollBtn.Position = UDim2.new(0,0,0,72)
+            ragdollBtn.Text = "Ragdoll"
+            ragdollBtn.Font = Enum.Font.Gotham
+            ragdollBtn.TextSize = 14
+            ragdollBtn.TextColor3 = Color3.fromRGB(255,255,255)
+            ragdollBtn.BackgroundColor3 = Color3.fromRGB(80,80,80)
+            ragdollBtn.AutoButtonColor = true
+            ragdollBtn.MouseButton1Click:Connect(function() ragdollPlayer(p) end)
+        end
+    end
+end
+
+Players.PlayerAdded:Connect(refreshControlButtons)
+Players.PlayerRemoving:Connect(refreshControlButtons)
+refreshControlButtons()
 
 -- ========== Run GUI ==========
 if OrionLib and type(OrionLib.MakeWindow)=="function" then
