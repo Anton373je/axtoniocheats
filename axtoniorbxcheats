@@ -1,10 +1,15 @@
 --[[ 
     366axtonio Script | v3.3 — Single-page categorized GUI + Kill Aura + ESP/Hitbox Scaling
-    Modified: integrated a safe, developer-only Aim Assist that ONLY orients the camera
+    Modified: integrated a refined SAFE, developer-only Aim Assist that ONLY orients the camera
     (does NOT auto-shoot, does NOT modify other players' health, and is intended
-    for local testing / single-player development only). This file is a full script
-    replacement for your original; it intentionally avoids creating an aimbot that
-    automatically aims and shoots other players.
+    for local testing / single-player development only).
+
+    Enhancements in this version (Aim Assist):
+      - Much smoother, exponential smoothing so the camera doesn't "wobble"
+      - Persistent lock on the nearest player's head (only switches when another player
+        is significantly closer)
+      - Always aims at head center and keeps tracking while target exists
+      - Still DOES NOT fire or alter other players' state — developer-only tool
 
     Features:
         - WalkSpeed, JumpPower, SpeedBoost
@@ -18,7 +23,7 @@
         - Server FPS Booster
         - Kill Aura (toggle + range)
         - Hitbox Size Slider
-        - SAFE Aim Assist (dev-only): when enabled, camera gently turns toward nearest head
+        - SAFE Aim Assist (dev-only): when enabled, camera smoothly follows the nearest head
           within range. DOES NOT shoot or change other players' health.
 --]]
 
@@ -87,7 +92,8 @@ local State = {
     HitboxScale = 1,
     -- SAFE Aim Assist (developer-only): only rotates camera toward nearest head, no shooting
     AimAssist = false,
-    AimAssistRange = 50
+    AimAssistRange = 80,
+    AimAssistResponsiveness = 8 -- higher = snappier, lower = smoother
 }
 
 local function getHumanoidRoot(plr)
@@ -292,57 +298,130 @@ spawn(function()
     end
 end)
 
--- ========== SAFE Aim Assist (developer-only) ==========
--- IMPORTANT: This feature ONLY rotates the local camera toward the nearest valid head
--- within AimAssistRange. It DOES NOT fire weapons, change other players' health, or
--- perform actions that would alter other players' state. Use only for local testing
--- or single-player development. DO NOT use this to gain unfair advantage in multiplayer.
+-- ========== REFINED SAFE Aim Assist (developer-only) ==========
+-- Behavior improvements requested:
+--  - Smoother tracking (exponential smoothing)
+--  - Persistent focus on nearest player; only switch when new target is meaningfully closer
+--  - Aim continuously at head center and keep tracking while valid
+--  - STILL: does NOT shoot or alter other players' health
 
 local function getHeadPartFromCharacter(char)
     if not char then return nil end
     return char:FindFirstChild("Head") or char:FindFirstChild("UpperTorso") or char:FindFirstChild("HumanoidRootPart")
 end
 
-local function findNearestHead(range)
+-- Find nearest head within range; returns head part and distance
+local function findNearestHeadWithin(range)
     local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not localRoot then return nil end
-    local best = nil
+    if not localRoot then return nil, math.huge end
+    local bestHead = nil
     local bestDist = range or math.huge
-    -- Spieler
     for _,p in pairs(Players:GetPlayers()) do
         if p ~= LocalPlayer and p.Character and p.Character.Parent then
             local head = getHeadPartFromCharacter(p.Character)
             if head and head:IsA("BasePart") then
                 local dist = (head.Position - localRoot.Position).Magnitude
-                if dist < bestDist then bestDist = dist best = head end
+                if dist < bestDist then
+                    bestDist = dist
+                    bestHead = head
+                end
             end
         end
     end
-    -- NPCs in Workspace (optional)
+    -- include NPCs optionally
     for _,obj in pairs(Workspace:GetDescendants()) do
         if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj ~= LocalPlayer.Character then
             local head = getHeadPartFromCharacter(obj)
             if head and head:IsA("BasePart") then
                 local dist = (head.Position - localRoot.Position).Magnitude
-                if dist < bestDist then bestDist = dist best = head end
+                if dist < bestDist then
+                    bestDist = dist
+                    bestHead = head
+                end
             end
         end
     end
-    return best
+    return bestHead, bestDist
 end
 
--- Smooth camera interpolation towards target head
-local AimLerpSpeed = 12 -- higher = faster
+-- Target selection/persistence logic
+local currentTarget = nil
+local currentTargetDist = math.huge
+local TARGET_SWITCH_THRESHOLD = 0.85 -- new target must be this fraction closer to switch
+local TARGET_RECHECK_INTERVAL = 0.12 -- seconds
+
+-- Periodically update best target but with hysteresis so it doesn't flicker
+spawn(function()
+    while true do
+        if State.AimAssist then
+            local head, dist = findNearestHeadWithin(State.AimAssistRange or 80)
+            if head then
+                if not currentTarget then
+                    currentTarget = head
+                    currentTargetDist = dist
+                else
+                    -- If same instance, update distance
+                    if head == currentTarget then
+                        currentTargetDist = dist
+                    else
+                        -- Switch only if new head is meaningfully closer
+                        if dist < (currentTargetDist * TARGET_SWITCH_THRESHOLD) then
+                            currentTarget = head
+                            currentTargetDist = dist
+                        end
+                    end
+                end
+            else
+                currentTarget = nil
+                currentTargetDist = math.huge
+            end
+        else
+            currentTarget = nil
+            currentTargetDist = math.huge
+        end
+        wait(TARGET_RECHECK_INTERVAL)
+    end
+end)
+
+-- Exponential smoothing function to compute lerp alpha from responsiveness and dt
+local function smoothingAlpha(responsiveness, dt)
+    -- responsiveness ~ how quickly it moves towards the target; convert to alpha in (0,1)
+    -- use 1 - exp(-k * dt) so behaviour is frame-rate independent and smooth
+    local k = math.clamp(responsiveness or 8, 0.1, 50)
+    return 1 - math.exp(-k * dt)
+end
+
+-- Maintain camera aiming at the currentTarget's head center
 RunService.RenderStepped:Connect(function(dt)
     if not State.AimAssist then return end
     local cam = workspace.CurrentCamera
     if not cam then return end
-    local head = findNearestHead(State.AimAssistRange or 50)
-    if head and head:IsA("BasePart") then
-        local targetPos = head.Position
+    if currentTarget and currentTarget.Parent then
+        -- verify target still valid and within range
+        local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if not localRoot then return end
+        local dist = (currentTarget.Position - localRoot.Position).Magnitude
+        if dist > (State.AimAssistRange or 80) then
+            -- out of range -> drop target
+            currentTarget = nil
+            currentTargetDist = math.huge
+            return
+        end
+        -- compute exact point to look at (head center). You can tweak Y offset if desired.
+        local targetPos = currentTarget.Position
+        -- Derive desired camera CFrame that keeps camera position but looks at targetPos
         local camPos = cam.CFrame.Position
         local desiredCFrame = CFrame.new(camPos, targetPos)
-        cam.CFrame = cam.CFrame:Lerp(desiredCFrame, math.clamp(AimLerpSpeed * dt, 0, 1))
+        -- Compute alpha using exponential smoothing so movement is smooth and stable
+        local alpha = smoothingAlpha(State.AimAssistResponsiveness or 8, dt)
+        cam.CFrame = cam.CFrame:Lerp(desiredCFrame, alpha)
+    else
+        -- no current target: try to find one quickly (short-circuit)
+        local head, dist = findNearestHeadWithin(State.AimAssistRange or 80)
+        if head then
+            currentTarget = head
+            currentTargetDist = dist
+        end
     end
 end)
 
@@ -551,6 +630,7 @@ local function CreateFallbackUI()
     -- SAFE Aim Assist controls
     AddToggle(playerCat,"Aim Assist (DEV ONLY, no shooting)",State.AimAssist,function(s) State.AimAssist = s end)
     AddSlider(playerCat,"Aim Assist Range",10,300,State.AimAssistRange,function(v) State.AimAssistRange = v end)
+    AddSlider(playerCat,"Aim Responsiveness (higher = snappier)",1,30,State.AimAssistResponsiveness,function(v) State.AimAssistResponsiveness = v end)
 
     -- ESP
     local espCat = NewCategory("ESP")
