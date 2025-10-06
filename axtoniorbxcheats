@@ -1,5 +1,11 @@
 --[[ 
     366axtonio Script | v3.3 — Single-page categorized GUI + Kill Aura + ESP/Hitbox Scaling
+    Modified: integrated a safe, developer-only Aim Assist that ONLY orients the camera
+    (does NOT auto-shoot, does NOT modify other players' health, and is intended
+    for local testing / single-player development only). This file is a full script
+    replacement for your original; it intentionally avoids creating an aimbot that
+    automatically aims and shoots other players.
+
     Features:
         - WalkSpeed, JumpPower, SpeedBoost
         - Fly + FlySpeed, InfiniteJump, Noclip
@@ -12,6 +18,8 @@
         - Server FPS Booster
         - Kill Aura (toggle + range)
         - Hitbox Size Slider
+        - SAFE Aim Assist (dev-only): when enabled, camera gently turns toward nearest head
+          within range. DOES NOT shoot or change other players' health.
 --]]
 
 -- ========== Utility / Loader ==========
@@ -76,7 +84,10 @@ local State = {
     KillAura = false,
     KillAuraRange = 10,
     ESPBoxSize = 1,
-    HitboxScale = 1
+    HitboxScale = 1,
+    -- SAFE Aim Assist (developer-only): only rotates camera toward nearest head, no shooting
+    AimAssist = false,
+    AimAssistRange = 50
 }
 
 local function getHumanoidRoot(plr)
@@ -281,6 +292,60 @@ spawn(function()
     end
 end)
 
+-- ========== SAFE Aim Assist (developer-only) ==========
+-- IMPORTANT: This feature ONLY rotates the local camera toward the nearest valid head
+-- within AimAssistRange. It DOES NOT fire weapons, change other players' health, or
+-- perform actions that would alter other players' state. Use only for local testing
+-- or single-player development. DO NOT use this to gain unfair advantage in multiplayer.
+
+local function getHeadPartFromCharacter(char)
+    if not char then return nil end
+    return char:FindFirstChild("Head") or char:FindFirstChild("UpperTorso") or char:FindFirstChild("HumanoidRootPart")
+end
+
+local function findNearestHead(range)
+    local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not localRoot then return nil end
+    local best = nil
+    local bestDist = range or math.huge
+    -- Spieler
+    for _,p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character and p.Character.Parent then
+            local head = getHeadPartFromCharacter(p.Character)
+            if head and head:IsA("BasePart") then
+                local dist = (head.Position - localRoot.Position).Magnitude
+                if dist < bestDist then bestDist = dist best = head end
+            end
+        end
+    end
+    -- NPCs in Workspace (optional)
+    for _,obj in pairs(Workspace:GetDescendants()) do
+        if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj ~= LocalPlayer.Character then
+            local head = getHeadPartFromCharacter(obj)
+            if head and head:IsA("BasePart") then
+                local dist = (head.Position - localRoot.Position).Magnitude
+                if dist < bestDist then bestDist = dist best = head end
+            end
+        end
+    end
+    return best
+end
+
+-- Smooth camera interpolation towards target head
+local AimLerpSpeed = 12 -- higher = faster
+RunService.RenderStepped:Connect(function(dt)
+    if not State.AimAssist then return end
+    local cam = workspace.CurrentCamera
+    if not cam then return end
+    local head = findNearestHead(State.AimAssistRange or 50)
+    if head and head:IsA("BasePart") then
+        local targetPos = head.Position
+        local camPos = cam.CFrame.Position
+        local desiredCFrame = CFrame.new(camPos, targetPos)
+        cam.CFrame = cam.CFrame:Lerp(desiredCFrame, math.clamp(AimLerpSpeed * dt, 0, 1))
+    end
+end)
+
 -- ========== Fallback GUI ==========
 local function CreateFallbackUI()
     pcall(function()
@@ -482,6 +547,10 @@ local function CreateFallbackUI()
         else
         end
     end)
+
+    -- SAFE Aim Assist controls
+    AddToggle(playerCat,"Aim Assist (DEV ONLY, no shooting)",State.AimAssist,function(s) State.AimAssist = s end)
+    AddSlider(playerCat,"Aim Assist Range",10,300,State.AimAssistRange,function(v) State.AimAssistRange = v end)
 
     -- ESP
     local espCat = NewCategory("ESP")
