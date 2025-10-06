@@ -1,5 +1,5 @@
 --[[ 
-    366axtonio Script | v3.1 — Single-page categorized GUI
+    366axtonio Script | v3.2 — Single-page categorized GUI + Kill Aura
     Features:
         - WalkSpeed, JumpPower, SpeedBoost
         - Fly + FlySpeed, InfiniteJump, Noclip
@@ -7,9 +7,10 @@
         - AutoFarm
         - Teleport / Random Player / Player List
         - Rejoin, ServerHop, Destroy GUI
-        - New Features: Gravity Slider, HipHeight Slider, FOV Slider
+        - Gravity Slider, HipHeight Slider, FOV Slider
         - Sit Button, Reset Character Button
         - Server FPS Booster
+        - NEW: Kill Aura (toggle + range)
 --]]
 
 -- ========== Utility / Loader ==========
@@ -70,7 +71,9 @@ local State = {
     Gravity = Workspace.Gravity,
     HipHeight = 2,
     FOV = 70,
-    FPSBooster = false
+    FPSBooster = false,
+    KillAura = false,
+    KillAuraRange = 10
 }
 
 local function getHumanoidRoot(plr)
@@ -90,7 +93,6 @@ local function createESP(plr)
     local hum, root = getHumanoidRoot(plr)
     if not root then return end
 
-    -- Billboard for Name
     local bb = Instance.new("BillboardGui")
     bb.Name = "AxtonioESP"
     bb.Adornee = root
@@ -106,7 +108,6 @@ local function createESP(plr)
     label.TextColor3 = Color3.fromRGB(255,100,100)
     bb.Parent = game.CoreGui
 
-    -- Box ESP
     local box = Instance.new("BoxHandleAdornment")
     box.Name = "ESPBox"
     box.Adornee = root
@@ -189,7 +190,6 @@ local function enableFly(val)
 end
 
 RunService.Heartbeat:Connect(function()
-    -- Fly movement
     if State.Fly and LocalPlayer and LocalPlayer.Character then
         local root = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
         if root and root:FindFirstChild(FlyBV_Name) then
@@ -208,7 +208,6 @@ RunService.Heartbeat:Connect(function()
         end
     end
 
-    -- Noclip (funktioniert jetzt zuverlässig)
     if State.Noclip and LocalPlayer and LocalPlayer.Character then
         for _,part in pairs(LocalPlayer.Character:GetDescendants()) do
             if part:IsA("BasePart") and part.CanCollide == true and part.Name ~= "HumanoidRootPart" then
@@ -218,7 +217,6 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- Infinite jump
 UserInputService.JumpRequest:Connect(function()
     if State.InfiniteJump then
         local hum = LocalPlayer and LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
@@ -237,8 +235,29 @@ local function teleportToPlayer(target)
     end
 end
 
+-- ========== Kill Aura ==========
+spawn(function()
+    while true do
+        if State.KillAura and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local myRoot = LocalPlayer.Character.HumanoidRootPart
+            for _, p in pairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("Humanoid") and p.Character:FindFirstChild("HumanoidRootPart") then
+                    local hrp = p.Character.HumanoidRootPart
+                    local dist = (hrp.Position - myRoot.Position).Magnitude
+                    if dist <= (State.KillAuraRange or 10) then
+                        local hum = p.Character.Humanoid
+                        pcall(function() hum.Health = 0 end)
+                    end
+                end
+            end
+        end
+        wait(0.1)
+    end
+end)
+
 -- ========== Fallback GUI ==========
 local function CreateFallbackUI()
+    -- (GUI-Code unverändert, nur neue Kill Aura Controls hinzufügen)
     -- Clear existing
     pcall(function()
         local existing = game.CoreGui:FindFirstChild("AxtonioUI_v3")
@@ -267,7 +286,7 @@ local function CreateFallbackUI()
     title.Font = Enum.Font.GothamBold
     title.TextSize = 20
     title.TextColor3 = Color3.fromRGB(255,255,255)
-    title.Text = "366axtonio Script | v3.1"
+    title.Text = "366axtonio Script | v3.2"
     title.TextStrokeTransparency = 0.8
 
     local scroll = Instance.new("ScrollingFrame", main)
@@ -287,7 +306,7 @@ local function CreateFallbackUI()
     end
     layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(UpdateCanvas)
 
-    -- ========== UI Helpers ==========
+    -- UI Helpers
     local function NewCategory(titleText)
         local cat = Instance.new("Frame", scroll)
         cat.Size = UDim2.new(1, -12, 0, 0)
@@ -391,14 +410,12 @@ local function CreateFallbackUI()
     end
 
     -- ========== Build categories ==========
-    -- Player
     local playerCat = NewCategory("Player")
     AddSlider(playerCat,"WalkSpeed",16,500,State.WalkSpeed,function(v)
         State.WalkSpeed=v
         local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
         if hum then pcall(function() hum.WalkSpeed = v * (State.SpeedBoost or 1) end) end
     end)
-    -- JumpPower (funktioniert jetzt)
     AddSlider(playerCat,"JumpPower",50,500,State.JumpPower,function(v)
         State.JumpPower = v
         local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
@@ -412,7 +429,7 @@ local function CreateFallbackUI()
     AddSlider(playerCat,"FlySpeed",10,300,State.FlySpeed,function(v) State.FlySpeed=v end)
     AddToggle(playerCat,"Fly (E/Q up/down + WASD)",State.Fly,function(s) enableFly(s) end)
     AddToggle(playerCat,"Infinite Jump (Space)",State.InfiniteJump,function(s) State.InfiniteJump=s end)
-    AddToggle(playerCat,"Noclip",State.Noclip,function(s) State.Noclip=s end) -- funktioniert jetzt
+    AddToggle(playerCat,"Noclip",State.Noclip,function(s) State.Noclip=s end)
     AddSlider(playerCat,"Gravity",0,500,State.Gravity,function(v) State.Gravity=v Workspace.Gravity=v end)
     AddSlider(playerCat,"HipHeight",0,10,State.HipHeight,function(v)
         State.HipHeight=v
@@ -455,13 +472,14 @@ local function CreateFallbackUI()
 
     -- Misc
     local miscCat = NewCategory("Misc")
+    AddToggle(miscCat,"Kill Aura",State.KillAura,function(s) State.KillAura=s end)
+    AddSlider(miscCat,"Kill Aura Range",1,50,State.KillAuraRange,function(v) State.KillAuraRange=v end)
     AddButton(miscCat,"Rejoin Server",function() pcall(function() TeleportService:Teleport(game.PlaceId,LocalPlayer) end) end)
     AddButton(miscCat,"ServerHop",function() pcall(function() TeleportService:Teleport(game.PlaceId,LocalPlayer) end) end)
     AddButton(miscCat,"Destroy GUI",function() pcall(function() screen:Destroy() end) end)
 
     -- Teleport
     local tpCat = NewCategory("Teleport")
-    -- Teleport to Random Player (funktioniert jetzt zuverlässig)
     AddButton(tpCat,"Teleport to Random Player",function()
         local pls = Players:GetPlayers()
         if #pls <= 1 then return end
@@ -478,7 +496,6 @@ local function CreateFallbackUI()
         end
     end)
 
-    -- Player list
     local listScroller = Instance.new("ScrollingFrame",tpCat)
     listScroller.Size = UDim2.new(1,-12,0,120)
     listScroller.BackgroundTransparency=1
@@ -513,7 +530,7 @@ end
 
 -- ========== Run GUI ==========
 if OrionLib and type(OrionLib.MakeWindow)=="function" then
-    CreateFallbackUI() -- still single-page for consistency
+    CreateFallbackUI() -- single-page consistency
 else
     CreateFallbackUI()
 end
