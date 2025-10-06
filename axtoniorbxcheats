@@ -1,42 +1,215 @@
---[[
-    366axtonio Script | v4.0 — Single-page GUI mit funktionierenden Features und neuen Beispielen
-    - Funktioniert: JumpPower, SpeedBoost, Noclip, Teleport Random Player
-    - Neue Features: Gravity Slider, HipHeight Slider, FOV Slider, Fly (Toggle + Speed), Sit, Reset, ESP Box+Name, FPS Booster
-]]
+--[[ 
+    366axtonio Script | v3.1 — Single-page categorized GUI
+    Features:
+        - WalkSpeed, JumpPower, SpeedBoost
+        - Fly + FlySpeed, InfiniteJump, Noclip
+        - ESP (Name + Box)
+        - AutoFarm
+        - Teleport / Random Player / Player List
+        - Rejoin, ServerHop, Destroy GUI
+        - New Features: Gravity Slider, HipHeight Slider, FOV Slider
+        - Sit Button, Reset Character Button
+        - Server FPS Booster
+--]]
 
--- Services
+-- ========== Utility / Loader ==========
+local ORION_URL = "https://raw.githubusercontent.com/shlexware/Orion/main/source"
+local function detect_http_get()
+    if pcall(function() return game.HttpGet end) and type(game.HttpGet)=="function" then
+        return function(url) return game:HttpGet(url,true) end
+    end
+    if type(syn)=="table" and type(syn.request)=="function" then
+        return function(url) local ok,r=pcall(function() return syn.request({Url=url,Method="GET"}) end) if ok and r then return r.Body end end
+    end
+    local http = http
+    if type(http)=="table" and type(http.request)=="function" then
+        return function(url) local ok,r=pcall(function() return http.request({Url=url,Method="GET"}) end) if ok and r then return r.Body end end
+    end
+    local HttpService = game:GetService("HttpService")
+    if HttpService and type(HttpService.GetAsync)=="function" then
+        return function(url) local ok,res=pcall(function() return HttpService:GetAsync(url) end) if ok then return res end end
+    end
+    return nil
+end
+local http_get = detect_http_get()
+local loader = loadstring or (syn and syn.loadstring) or (KRNL and KRNL.loadstring) or (Fluxus and Fluxus.loadstring)
+
+local OrionLib = nil
+if loader and http_get then
+    pcall(function()
+        local src = http_get(ORION_URL)
+        if type(src)=="string" and #src>50 then
+            local chunk = loader(src)
+            if type(chunk)=="function" then
+                local ok, lib = pcall(chunk)
+                if ok and type(lib)=="table" then OrionLib = lib end
+            end
+        end
+    end)
+end
+
+-- ========== Shared services & state ==========
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local TeleportService = game:GetService("TeleportService")
 local Workspace = game:GetService("Workspace")
 
--- State
 local State = {
+    WalkSpeed = 16,
     JumpPower = 50,
     SpeedBoost = 1,
-    Noclip = false,
     Fly = false,
     FlySpeed = 60,
+    InfiniteJump = false,
+    Noclip = false,
+    ESP = false,
+    AutoFarm = false,
+    FarmDelay = 0.5,
     Gravity = Workspace.Gravity,
     HipHeight = 2,
-    FOV = Workspace.CurrentCamera.FieldOfView,
-    ESP = false
+    FOV = 70,
+    FPSBooster = false
 }
 
--- Utility
-local function getHumanoid()
-    return LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+local function getHumanoidRoot(plr)
+    if not plr then return nil end
+    local char = plr.Character
+    if not char then return nil end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+    return hum, root
 end
 
-local function getHumanoidRoot()
-    local hum = getHumanoid()
-    if hum then return LocalPlayer.Character:FindFirstChild("HumanoidRootPart") end
+-- ========== ESP ==========
+local ESPMap = {}
+local function createESP(plr)
+    if not plr or plr == LocalPlayer then return end
+    if ESPMap[plr] and ESPMap[plr].Gui and ESPMap[plr].Gui.Parent then return end
+    local hum, root = getHumanoidRoot(plr)
+    if not root then return end
+
+    -- Billboard for Name
+    local bb = Instance.new("BillboardGui")
+    bb.Name = "AxtonioESP"
+    bb.Adornee = root
+    bb.Size = UDim2.new(0,140,0,40)
+    bb.StudsOffset = Vector3.new(0,2.4,0)
+    bb.AlwaysOnTop = true
+    local label = Instance.new("TextLabel", bb)
+    label.Size = UDim2.new(1,0,1,0)
+    label.BackgroundTransparency = 1
+    label.Text = plr.Name
+    label.TextScaled = true
+    label.Font = Enum.Font.GothamBold
+    label.TextColor3 = Color3.fromRGB(255,100,100)
+    bb.Parent = game.CoreGui
+
+    -- Box ESP
+    local box = Instance.new("BoxHandleAdornment")
+    box.Name = "ESPBox"
+    box.Adornee = root
+    box.Size = root.Size
+    box.Color3 = Color3.fromRGB(255,100,100)
+    box.AlwaysOnTop = true
+    box.Transparency = 0.5
+    box.Parent = root
+
+    ESPMap[plr] = {Gui = bb, Box = box}
 end
 
--- Noclip
-RunService.Stepped:Connect(function()
-    if State.Noclip and LocalPlayer.Character then
+local function destroyAllESP()
+    for p,info in pairs(ESPMap) do
+        pcall(function() if info.Gui then info.Gui:Destroy() end end)
+        pcall(function() if info.Box then info.Box:Destroy() end end)
+    end
+    ESPMap = {}
+end
+
+Players.PlayerAdded:Connect(function(p)
+    p.CharacterAdded:Connect(function() if State.ESP then createESP(p) end end)
+end)
+Players.PlayerRemoving:Connect(function(p)
+    if ESPMap[p] then
+        pcall(function() if ESPMap[p].Gui then ESPMap[p].Gui:Destroy() end end)
+        pcall(function() if ESPMap[p].Box then ESPMap[p].Box:Destroy() end end)
+        ESPMap[p]=nil
+    end
+end)
+
+-- ========== AutoFarm ==========
+spawn(function()
+    while true do
+        if State.AutoFarm then
+            local plr = LocalPlayer
+            if plr and plr:FindFirstChild("PlayerGui") then
+                local btn = plr.PlayerGui:FindFirstChild("ClickButton", true) or plr.PlayerGui:FindFirstChildOfClass("RemoteEvent")
+                if btn then
+                    pcall(function()
+                        if typeof(btn.FireServer) == "function" then btn:FireServer() end
+                        if typeof(btn.Activate) == "function" then btn:Activate() end
+                    end)
+                end
+            end
+            wait(State.FarmDelay or 0.5)
+        else
+            wait(0.2)
+        end
+    end
+end)
+
+-- ========== Fly & Noclip & InfiniteJump ==========
+local FlyBV_Name = "Axtonio_FlyBV"
+local FlyBG_Name = "Axtonio_FlyBG"
+
+local function enableFly(val)
+    State.Fly = val
+    local char = LocalPlayer and LocalPlayer.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    if val then
+        if not root:FindFirstChild(FlyBV_Name) then
+            local bv = Instance.new("BodyVelocity")
+            bv.Name = FlyBV_Name
+            bv.MaxForce = Vector3.new(1e5,1e5,1e5)
+            bv.Parent = root
+        end
+        if not root:FindFirstChild(FlyBG_Name) then
+            local bg = Instance.new("BodyGyro")
+            bg.Name = FlyBG_Name
+            bg.MaxTorque = Vector3.new(1e5,1e5,1e5)
+            bg.Parent = root
+        end
+    else
+        pcall(function() if root:FindFirstChild(FlyBV_Name) then root[FlyBV_Name]:Destroy() end end)
+        pcall(function() if root:FindFirstChild(FlyBG_Name) then root[FlyBG_Name]:Destroy() end end)
+    end
+end
+
+RunService.Heartbeat:Connect(function()
+    -- Fly movement
+    if State.Fly and LocalPlayer and LocalPlayer.Character then
+        local root = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if root and root:FindFirstChild(FlyBV_Name) then
+            local bv = root[FlyBV_Name]
+            local cam = workspace.CurrentCamera
+            local move = Vector3.new(0,0,0)
+            local forward = (UserInputService:IsKeyDown(Enum.KeyCode.W) and 1 or 0) - (UserInputService:IsKeyDown(Enum.KeyCode.S) and 1 or 0)
+            local right = (UserInputService:IsKeyDown(Enum.KeyCode.D) and 1 or 0) - (UserInputService:IsKeyDown(Enum.KeyCode.A) and 1 or 0)
+            local up = (UserInputService:IsKeyDown(Enum.KeyCode.E) and 1 or 0) - (UserInputService:IsKeyDown(Enum.KeyCode.Q) and 1 or 0)
+            local camCFrame = cam and cam.CFrame or root.CFrame
+            local dir = (camCFrame.LookVector * forward) + (camCFrame.RightVector * right) + Vector3.new(0, up, 0)
+            if dir.Magnitude > 0 then
+                move = dir.Unit * (State.FlySpeed or 60)
+            end
+            bv.Velocity = move
+        end
+    end
+
+    -- Noclip
+    if State.Noclip and LocalPlayer and LocalPlayer.Character then
         for _,part in pairs(LocalPlayer.Character:GetDescendants()) do
             if part:IsA("BasePart") and part.CanCollide == true and part.Name ~= "HumanoidRootPart" then
                 pcall(function() part.CanCollide = false end)
@@ -45,196 +218,306 @@ RunService.Stepped:Connect(function()
     end
 end)
 
--- Fly
-local FlyBV, FlyBG
-local function enableFly(val)
-    State.Fly = val
-    local root = getHumanoidRoot()
-    if not root then return end
-    if val then
-        FlyBV = Instance.new("BodyVelocity")
-        FlyBV.MaxForce = Vector3.new(1e5,1e5,1e5)
-        FlyBV.Velocity = Vector3.new(0,0,0)
-        FlyBV.Parent = root
+-- Infinite jump
+UserInputService.JumpRequest:Connect(function()
+    if State.InfiniteJump then
+        local hum = LocalPlayer and LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if hum then pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end) end
+    end
+end)
 
-        FlyBG = Instance.new("BodyGyro")
-        FlyBG.MaxTorque = Vector3.new(1e5,1e5,1e5)
-        FlyBG.CFrame = root.CFrame
-        FlyBG.Parent = root
-    else
-        pcall(function() if FlyBV then FlyBV:Destroy() end end)
-        pcall(function() if FlyBG then FlyBG:Destroy() end end)
+-- ========== Teleport ==========
+local function teleportToPlayer(target)
+    if not target or not target.Character then return end
+    local root = target.Character:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if myRoot then
+        pcall(function() LocalPlayer.Character:MoveTo(root.Position + Vector3.new(2, 0, 2)) end)
     end
 end
 
-RunService.Heartbeat:Connect(function()
-    if State.Fly then
-        local root = getHumanoidRoot()
-        if root and FlyBV then
-            local cam = Workspace.CurrentCamera
-            local move = Vector3.new(0,0,0)
-            local forward = (UserInputService:IsKeyDown(Enum.KeyCode.W) and 1 or 0) - (UserInputService:IsKeyDown(Enum.KeyCode.S) and 1 or 0)
-            local right = (UserInputService:IsKeyDown(Enum.KeyCode.D) and 1 or 0) - (UserInputService:IsKeyDown(Enum.KeyCode.A) and 1 or 0)
-            local up = (UserInputService:IsKeyDown(Enum.KeyCode.E) and 1 or 0) - (UserInputService:IsKeyDown(Enum.KeyCode.Q) and 1 or 0)
-            local dir = (cam.CFrame.LookVector * forward) + (cam.CFrame.RightVector * right) + Vector3.new(0, up, 0)
-            if dir.Magnitude > 0 then
-                move = dir.Unit * State.FlySpeed
+-- ========== Fallback GUI ==========
+local function CreateFallbackUI()
+    -- Clear existing
+    pcall(function()
+        local existing = game.CoreGui:FindFirstChild("AxtonioUI_v3")
+        if existing then existing:Destroy() end
+    end)
+
+    local screen = Instance.new("ScreenGui")
+    screen.Name = "AxtonioUI_v3"
+    screen.ResetOnSpawn = false
+    screen.Parent = game.CoreGui
+
+    local main = Instance.new("Frame", screen)
+    main.Name = "Main"
+    main.Size = UDim2.new(0,720,0,580)
+    main.Position = UDim2.new(0.5, -360, 0.05, 0)
+    main.BackgroundColor3 = Color3.fromRGB(23,23,23)
+    main.BorderSizePixel = 0
+    main.Active = true
+    main.Draggable = true
+    main.ClipsDescendants = true
+
+    local title = Instance.new("TextLabel", main)
+    title.Size = UDim2.new(1, 0, 0, 46)
+    title.Position = UDim2.new(0,0,0,0)
+    title.BackgroundTransparency = 1
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 20
+    title.TextColor3 = Color3.fromRGB(255,255,255)
+    title.Text = "366axtonio Script | v3.1"
+    title.TextStrokeTransparency = 0.8
+
+    local scroll = Instance.new("ScrollingFrame", main)
+    scroll.Size = UDim2.new(1, -20, 1, -66)
+    scroll.Position = UDim2.new(0, 10, 0, 56)
+    scroll.CanvasSize = UDim2.new(0,0,0,0)
+    scroll.ScrollBarThickness = 8
+    scroll.BackgroundTransparency = 1
+
+    local layout = Instance.new("UIListLayout", scroll)
+    layout.FillDirection = Enum.FillDirection.Vertical
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Padding = UDim.new(0,10)
+
+    local function UpdateCanvas()
+        scroll.CanvasSize = UDim2.new(0,0,0,layout.AbsoluteContentSize.Y + 12)
+    end
+    layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(UpdateCanvas)
+
+    -- ========== UI Helpers ==========
+    local function NewCategory(titleText)
+        local cat = Instance.new("Frame", scroll)
+        cat.Size = UDim2.new(1, -12, 0, 0)
+        cat.BackgroundColor3 = Color3.fromRGB(30,30,30)
+        cat.BorderSizePixel = 0
+        cat.AutomaticSize = Enum.AutomaticSize.Y
+        cat.LayoutOrder = #scroll:GetChildren()
+        local catLayout = Instance.new("UIListLayout", cat)
+        catLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        catLayout.Padding = UDim.new(0,8)
+        local header = Instance.new("TextLabel", cat)
+        header.Size = UDim2.new(1,0,0,32)
+        header.BackgroundColor3 = Color3.fromRGB(50,50,50)
+        header.Font = Enum.Font.GothamBold
+        header.TextSize = 16
+        header.TextColor3 = Color3.fromRGB(245,245,245)
+        header.Text = " "..titleText
+        header.BorderSizePixel = 0
+        return cat
+    end
+
+    local function AddButton(parent,text,cb)
+        local btn = Instance.new("TextButton", parent)
+        btn.Size = UDim2.new(1,-12,0,36)
+        btn.BackgroundColor3 = Color3.fromRGB(90,90,90)
+        btn.Font = Enum.Font.Gotham
+        btn.TextSize = 15
+        btn.TextColor3 = Color3.fromRGB(255,255,255)
+        btn.AutoButtonColor = true
+        btn.Text = text
+        btn.MouseEnter:Connect(function() btn.BackgroundColor3 = Color3.fromRGB(110,110,110) end)
+        btn.MouseLeave:Connect(function() btn.BackgroundColor3 = Color3.fromRGB(90,90,90) end)
+        btn.MouseButton1Click:Connect(function() pcall(cb) end)
+        return btn
+    end
+
+    local function AddToggle(parent,text,default,cb)
+        local state = default or false
+        local btn = Instance.new("TextButton", parent)
+        btn.Size = UDim2.new(1,-12,0,36)
+        btn.BackgroundColor3 = Color3.fromRGB(100,100,100)
+        btn.Font = Enum.Font.Gotham
+        btn.TextSize = 15
+        btn.TextColor3 = Color3.fromRGB(255,255,255)
+        btn.Text = text.." : "..(state and "On" or "Off")
+        btn.AutoButtonColor = true
+        btn.MouseButton1Click:Connect(function()
+            state = not state
+            btn.Text = text.." : "..(state and "On" or "Off")
+            pcall(function() cb(state) end)
+        end)
+        return btn
+    end
+
+    local function AddSlider(parent,text,min,max,default,cb)
+        default = default or min
+        local container = Instance.new("Frame", parent)
+        container.Size = UDim2.new(1,-12,0,48)
+        container.BackgroundTransparency = 1
+        local label = Instance.new("TextLabel", container)
+        label.Size = UDim2.new(1,0,0,18)
+        label.Position = UDim2.new(0,0,0,0)
+        label.BackgroundTransparency = 1
+        label.Font = Enum.Font.Gotham
+        label.TextSize = 14
+        label.TextColor3 = Color3.fromRGB(240,240,240)
+        label.Text = text.." : "..tostring(default)
+        local bar = Instance.new("Frame", container)
+        bar.Size = UDim2.new(1,-12,0,12)
+        bar.Position = UDim2.new(0,6,0,26)
+        bar.BackgroundColor3 = Color3.fromRGB(80,80,80)
+        bar.BorderSizePixel = 0
+        local fill = Instance.new("Frame", bar)
+        fill.Size = UDim2.new((default-min)/(max-min),0,1,0)
+        fill.BackgroundColor3 = Color3.fromRGB(170,170,255)
+        fill.BorderSizePixel = 0
+        local dragging = false
+        local function setFromX(x)
+            local posX = x - bar.AbsolutePosition.X
+            local pct = math.clamp(posX / math.max(1, bar.AbsoluteSize.X),0,1)
+            local val = math.floor(min + pct * (max-min))
+            fill.Size = UDim2.new(pct,0,1,0)
+            label.Text = text.." : "..tostring(val)
+            pcall(function() cb(val) end)
+        end
+        bar.InputBegan:Connect(function(inp)
+            if inp.UserInputType==Enum.UserInputType.MouseButton1 then
+                dragging = true
+                setFromX(UserInputService:GetMouseLocation().X)
             end
-            FlyBV.Velocity = move
+        end)
+        UserInputService.InputChanged:Connect(function(inp)
+            if dragging and inp.UserInputType==Enum.UserInputType.MouseMovement then
+                setFromX(inp.Position.X)
+            end
+        end)
+        UserInputService.InputEnded:Connect(function(inp)
+            if inp.UserInputType==Enum.UserInputType.MouseButton1 then dragging = false end
+        end)
+        return container
+    end
+
+    -- ========== Build categories ==========
+
+    -- Player
+    local playerCat = NewCategory("Player")
+    AddSlider(playerCat,"WalkSpeed",16,500,State.WalkSpeed,function(v)
+        State.WalkSpeed=v
+        local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if hum then pcall(function() hum.WalkSpeed = v * (State.SpeedBoost or 1) end) end
+    end)
+    AddSlider(playerCat,"JumpPower",50,500,State.JumpPower,function(v)
+        State.JumpPower=v
+        local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if hum then pcall(function() hum.JumpPower=v end) end
+    end)
+    AddSlider(playerCat,"SpeedBoost",0.5,5,State.SpeedBoost,function(v)
+        State.SpeedBoost=v
+        local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if hum then pcall(function() hum.WalkSpeed=(State.WalkSpeed or 16)*v end) end
+    end)
+    AddSlider(playerCat,"FlySpeed",10,300,State.FlySpeed,function(v) State.FlySpeed=v end)
+    AddToggle(playerCat,"Fly (E/Q up/down + WASD)",State.Fly,function(s) enableFly(s) end)
+    AddToggle(playerCat,"Infinite Jump (Space)",State.InfiniteJump,function(s) State.InfiniteJump=s end)
+    AddToggle(playerCat,"Noclip",State.Noclip,function(s) State.Noclip=s end)
+    AddSlider(playerCat,"Gravity",0,500,State.Gravity,function(v) State.Gravity=v Workspace.Gravity=v end)
+    AddSlider(playerCat,"HipHeight",0,10,State.HipHeight,function(v)
+        State.HipHeight=v
+        local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if hum then pcall(function() hum.HipHeight=v end) end
+    end)
+    AddSlider(playerCat,"FOV",50,120,State.FOV,function(v)
+        State.FOV=v
+        if workspace.CurrentCamera then workspace.CurrentCamera.FieldOfView=v end
+    end)
+    AddButton(playerCat,"Sit",function()
+        local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if hum then hum.Sit=true end
+    end)
+    AddButton(playerCat,"Reset Character",function()
+        local char = LocalPlayer.Character
+        if char then char:BreakJoints() end
+    end)
+    AddToggle(playerCat,"FPS Booster (low gfx)",State.FPSBooster,function(s)
+        State.FPSBooster=s
+        if s then
+            for _,obj in pairs(Workspace:GetDescendants()) do
+                if obj:IsA("Part") then obj.Material=Enum.Material.SmoothPlastic obj.Reflectance=0 end
+            end
+        else
+            -- cannot restore original materials without storing them; simple off is no-op
+        end
+    end)
+
+    -- ESP
+    local espCat = NewCategory("ESP")
+    AddToggle(espCat,"Enable ESP",State.ESP,function(s)
+        State.ESP=s
+        if s then for _,p in pairs(Players:GetPlayers()) do createESP(p) end else destroyAllESP() end
+    end)
+
+    -- AutoFarm
+    local farmCat = NewCategory("AutoFarm")
+    AddToggle(farmCat,"Auto Farm",State.AutoFarm,function(s) State.AutoFarm=s end)
+    AddSlider(farmCat,"Farm Delay",0.1,3,State.FarmDelay,function(v) State.FarmDelay=v end)
+
+    -- Misc
+    local miscCat = NewCategory("Misc")
+    AddButton(miscCat,"Rejoin Server",function() pcall(function() TeleportService:Teleport(game.PlaceId,LocalPlayer) end) end)
+    AddButton(miscCat,"ServerHop",function() pcall(function() TeleportService:Teleport(game.PlaceId,LocalPlayer) end) end)
+    AddButton(miscCat,"Destroy GUI",function() pcall(function() screen:Destroy() end) end)
+
+    -- Teleport
+    local tpCat = NewCategory("Teleport")
+    AddButton(tpCat,"Teleport to Random Player",function()
+        local pls=Players:GetPlayers()
+        if #pls<=1 then return end
+        local target=pls[math.random(1,#pls)]
+        if target and target~=LocalPlayer then teleportToPlayer(target) end
+    end)
+
+    -- Player list
+    local listScroller = Instance.new("ScrollingFrame",tpCat)
+    listScroller.Size = UDim2.new(1,-12,0,120)
+    listScroller.BackgroundTransparency=1
+    listScroller.ScrollBarThickness=6
+    local listLayout = Instance.new("UIListLayout",listScroller)
+    listLayout.SortOrder=Enum.SortOrder.LayoutOrder
+
+    local function refreshPlayerButtons()
+        for _,c in pairs(listScroller:GetChildren()) do
+            if not c:IsA("UIListLayout") then pcall(function() c:Destroy() end) end
+        end
+        for _,p in pairs(Players:GetPlayers()) do
+            if p~=LocalPlayer then
+                local pb = Instance.new("TextButton",listScroller)
+                pb.Size = UDim2.new(1,0,0,28)
+                pb.Text = "TP -> "..p.Name
+                pb.Font = Enum.Font.Gotham
+                pb.TextSize = 14
+                pb.TextColor3 = Color3.fromRGB(240,240,240)
+                pb.BackgroundColor3 = Color3.fromRGB(80,80,80)
+                pb.AutoButtonColor=true
+                pb.MouseButton1Click:Connect(function() teleportToPlayer(p) end)
+            end
         end
     end
-end)
+    Players.PlayerAdded:Connect(refreshPlayerButtons)
+    Players.PlayerRemoving:Connect(refreshPlayerButtons)
+    refreshPlayerButtons()
+    UpdateCanvas()
+    return screen
+end
 
--- Teleport Random Player
-local function teleportRandomPlayer()
-    local pls = Players:GetPlayers()
-    if #pls <= 1 then return end
-    local target = pls[math.random(1,#pls)]
-    if target == LocalPlayer then target = pls[math.random(1,#pls)] end
-    local root = getHumanoidRoot()
-    local targetRoot = target.Character and target.Character:FindFirstChild("HumanoidRootPart")
-    if root and targetRoot then
-        root.CFrame = targetRoot.CFrame + Vector3.new(2,0,2)
+-- ========== Run GUI ==========
+if OrionLib and type(OrionLib.MakeWindow)=="function" then
+    CreateFallbackUI() -- still single-page for consistency
+else
+    CreateFallbackUI()
+end
+
+-- Apply initial defaults
+spawn(function()
+    wait(0.5)
+    local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+    if hum then
+        pcall(function() hum.WalkSpeed=State.WalkSpeed end)
+        pcall(function() hum.JumpPower=State.JumpPower end)
+        hum.HipHeight = State.HipHeight
     end
-end
-
--- GUI Creation
-local screen = Instance.new("ScreenGui")
-screen.Name = "AxtonioUI_v4"
-screen.ResetOnSpawn = false
-screen.Parent = game.CoreGui
-
-local main = Instance.new("Frame", screen)
-main.Size = UDim2.new(0,400,0,500)
-main.Position = UDim2.new(0.5,-200,0.1,0)
-main.BackgroundColor3 = Color3.fromRGB(30,30,30)
-main.BorderSizePixel = 0
-main.Active = true
-main.Draggable = true
-
-local title = Instance.new("TextLabel", main)
-title.Size = UDim2.new(1,0,0,40)
-title.Position = UDim2.new(0,0,0,0)
-title.BackgroundTransparency = 1
-title.Font = Enum.Font.GothamBold
-title.TextSize = 20
-title.TextColor3 = Color3.fromRGB(255,255,255)
-title.Text = "Axtonio GUI v4"
-
-local layout = Instance.new("UIListLayout", main)
-layout.SortOrder = Enum.SortOrder.LayoutOrder
-layout.Padding = UDim.new(0,8)
-
--- UI Helpers
-local function AddSlider(parent, text, min, max, default, cb)
-    local frame = Instance.new("Frame", parent)
-    frame.Size = UDim2.new(1,-10,0,50)
-    frame.BackgroundTransparency = 1
-    local label = Instance.new("TextLabel", frame)
-    label.Size = UDim2.new(1,0,0,20)
-    label.BackgroundTransparency = 1
-    label.Font = Enum.Font.Gotham
-    label.TextSize = 14
-    label.TextColor3 = Color3.fromRGB(255,255,255)
-    label.Text = text..": "..default
-
-    local bar = Instance.new("Frame", frame)
-    bar.Size = UDim2.new(1,0,0,10)
-    bar.Position = UDim2.new(0,0,0,30)
-    bar.BackgroundColor3 = Color3.fromRGB(80,80,80)
-
-    local fill = Instance.new("Frame", bar)
-    fill.Size = UDim2.new((default-min)/(max-min),0,1,0)
-    fill.BackgroundColor3 = Color3.fromRGB(170,170,255)
-
-    local dragging = false
-    local function setFromX(x)
-        local pct = math.clamp((x - bar.AbsolutePosition.X)/bar.AbsoluteSize.X,0,1)
-        fill.Size = UDim2.new(pct,0,1,0)
-        local val = math.floor(min + pct*(max-min))
-        label.Text = text..": "..val
-        pcall(function() cb(val) end)
-    end
-    bar.InputBegan:Connect(function(inp)
-        if inp.UserInputType == Enum.UserInputType.MouseButton1 then dragging=true setFromX(UserInputService:GetMouseLocation().X) end
-    end)
-    UserInputService.InputChanged:Connect(function(inp)
-        if dragging and inp.UserInputType==Enum.UserInputType.MouseMovement then setFromX(inp.Position.X) end
-    end)
-    UserInputService.InputEnded:Connect(function(inp)
-        if inp.UserInputType==Enum.UserInputType.MouseButton1 then dragging=false end
-    end)
-end
-
-local function AddToggle(parent, text, default, cb)
-    local btn = Instance.new("TextButton", parent)
-    btn.Size = UDim2.new(1,-10,0,30)
-    btn.BackgroundColor3 = Color3.fromRGB(100,100,100)
-    btn.Font = Enum.Font.Gotham
-    btn.TextSize = 14
-    btn.TextColor3 = Color3.fromRGB(255,255,255)
-    btn.Text = text.." : "..(default and "On" or "Off")
-    local state = default
-    btn.MouseButton1Click:Connect(function()
-        state = not state
-        btn.Text = text.." : "..(state and "On" or "Off")
-        pcall(function() cb(state) end)
-    end)
-end
-
-local function AddButton(parent, text, cb)
-    local btn = Instance.new("TextButton", parent)
-    btn.Size = UDim2.new(1,-10,0,30)
-    btn.BackgroundColor3 = Color3.fromRGB(90,90,90)
-    btn.Font = Enum.Font.Gotham
-    btn.TextSize = 14
-    btn.TextColor3 = Color3.fromRGB(255,255,255)
-    btn.Text = text
-    btn.MouseButton1Click:Connect(function() pcall(cb) end)
-end
-
--- Add Features
-AddSlider(main,"JumpPower",50,500,State.JumpPower,function(v)
-    State.JumpPower=v
-    local hum=getHumanoid()
-    if hum then hum.JumpPower=v end
-end)
-
-AddSlider(main,"Speed Boost",0.5,5,State.SpeedBoost,function(v)
-    State.SpeedBoost=v
-    local hum=getHumanoid()
-    if hum then hum.WalkSpeed=16*v end
-end)
-
-AddToggle(main,"Noclip",State.Noclip,function(s) State.Noclip=s end)
-AddToggle(main,"Fly",State.Fly,function(s) enableFly(s) end)
-AddSlider(main,"Fly Speed",10,300,State.FlySpeed,function(v) State.FlySpeed=v end)
-
-AddSlider(main,"Gravity",0,500,State.Gravity,function(v) Workspace.Gravity=v end)
-AddSlider(main,"HipHeight",0,10,State.HipHeight,function(v)
-    local hum=getHumanoid()
-    if hum then hum.HipHeight=v end
-end)
-AddSlider(main,"FOV",10,120,State.FOV,function(v)
-    Workspace.CurrentCamera.FieldOfView=v
-end)
-
-AddButton(main,"Sit",function()
-    local hum=getHumanoid()
-    if hum then hum.Sit=true end
-end)
-
-AddButton(main,"Reset Character",function()
-    LocalPlayer:LoadCharacter()
-end)
-
-AddButton(main,"Teleport Random Player",teleportRandomPlayer)
-AddToggle(main,"ESP (Box+Name)",State.ESP,function(s) State.ESP=s end)
-
-AddButton(main,"FPS Booster",function()
-    for _,v in pairs(Workspace:GetDescendants()) do
-        if v:IsA("BasePart") then v.Material=Enum.Material.SmoothPlastic v.Reflectance=0 end
-    end
-    local Lighting=game:GetService("Lighting")
-    Lighting.GlobalShadows=false Lighting.FogEnd=9e9 Lighting.Brightness=1
+    if workspace.CurrentCamera then workspace.CurrentCamera.FieldOfView=State.FOV end
+    Workspace.Gravity = State.Gravity
 end)
