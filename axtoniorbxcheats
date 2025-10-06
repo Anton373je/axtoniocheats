@@ -1,0 +1,165 @@
+--[[ 
+    Universal Roblox Script using Orion Library
+    Features:
+    - Player ESP (Boxes & Names)
+    - Auto-Farm (example: auto click or collect)
+    - Misc (WalkSpeed, JumpPower)
+    - Theme Customization
+--]]
+
+-- Load Orion Library
+local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/shlexware/Orion/main/source')))()
+
+-- Create the GUI Window
+local Window = OrionLib:MakeWindow({Name = "366axtonio Script | v1.0", HidePremium = false, SaveConfig = true, ConfigFolder = "UniversalScript"})
+
+-- ==============================
+-- Tab 1: Player Utilities
+-- ==============================
+local PlayerTab = Window:MakeTab({
+    Name = "Player",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+-- WalkSpeed Slider
+PlayerTab:AddSlider({
+    Name = "WalkSpeed",
+    Min = 16,
+    Max = 500,
+    Default = 16,
+    Color = Color3.fromRGB(255,255,255),
+    Increment = 1,
+    ValueName = "speed",
+    Callback = function(value)
+        game.Players.LocalPlayer.Character.Humanoid.WalkSpeed = value
+    end
+})
+
+-- JumpPower Slider
+PlayerTab:AddSlider({
+    Name = "JumpPower",
+    Min = 50,
+    Max = 500,
+    Default = 50,
+    Color = Color3.fromRGB(255,255,255),
+    Increment = 1,
+    ValueName = "power",
+    Callback = function(value)
+        game.Players.LocalPlayer.Character.Humanoid.JumpPower = value
+    end
+})
+
+-- ==============================
+-- Tab 2: ESP
+-- ==============================
+local ESPTab = Window:MakeTab({
+    Name = "ESP",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+local ESPEnabled = false
+local ESPBoxes = {}
+
+ESPTab:AddToggle({
+    Name = "Enable ESP",
+    Default = false,
+    Callback = function(Value)
+        ESPEnabled = Value
+        if ESPEnabled then
+            for i, player in pairs(game.Players:GetPlayers()) do
+                if player ~= game.Players.LocalPlayer then
+                    if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                        local Billboard = Instance.new("BillboardGui")
+                        Billboard.Name = "ESPBillboard"
+                        Billboard.Size = UDim2.new(0,100,0,50)
+                        Billboard.Adornee = player.Character.HumanoidRootPart
+                        Billboard.AlwaysOnTop = true
+
+                        local TextLabel = Instance.new("TextLabel")
+                        TextLabel.Parent = Billboard
+                        TextLabel.Size = UDim2.new(1,0,1,0)
+                        TextLabel.BackgroundTransparency = 1
+                        TextLabel.TextColor3 = Color3.new(1,0,0)
+                        TextLabel.TextScaled = true
+                        TextLabel.Text = player.Name
+
+                        Billboard.Parent = game.CoreGui
+                        ESPBoxes[player] = Billboard
+                    end
+                end
+            end
+        else
+            for _, esp in pairs(ESPBoxes) do
+                esp:Destroy()
+            end
+            ESPBoxes = {}
+        end
+    end
+})
+
+-- ==============================
+-- Tab 3: AutoFarm
+-- ==============================
+local FarmTab = Window:MakeTab({
+    Name = "AutoFarm",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+local AutoFarmEnabled = false
+FarmTab:AddToggle({
+    Name = "Auto Farm",
+    Default = false,
+    Callback = function(Value)
+        AutoFarmEnabled = Value
+        spawn(function()
+            while AutoFarmEnabled do
+                wait(0.5)
+                -- Example: Auto click or collect coins
+                if game.Players.LocalPlayer:FindFirstChild("PlayerGui") then
+                    local ClickButton = game.Players.LocalPlayer.PlayerGui:FindFirstChild("ClickButton")
+                    if ClickButton then
+                        ClickButton:FireServer()
+                    end
+                end
+            end
+        end)
+    end
+})
+
+-- ==============================
+-- Tab 4: Misc
+-- ==============================
+local MiscTab = Window:MakeTab({
+    Name = "Misc",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+MiscTab:AddButton({
+    Name = "Rejoin Server",
+    Callback = function()
+        local TeleportService = game:GetService("TeleportService")
+        TeleportService:Teleport(game.PlaceId, game.Players.LocalPlayer)
+    end
+})
+
+MiscTab:AddButton({
+    Name = "Destroy GUI",
+    Callback = function()
+        OrionLib:Destroy()
+    end
+})
+
+-- ==============================
+-- Themes
+-- ==============================
+OrionLib:Init()
+OrionLib:MakeNotification({
+    Name = "Loaded",
+    Content = "Axtonio Script loaded successfully!",
+    Image = "rbxassetid://4483345998",
+    Time = 5
+})
